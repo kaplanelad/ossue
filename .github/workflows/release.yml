@@ -106,7 +106,7 @@ jobs:
 
   publish-release:
     name: Publish Release
-    needs: build-tauri
+    needs: [create-release, build-tauri]
     runs-on: ubuntu-latest
     steps:
       - name: Publish release
