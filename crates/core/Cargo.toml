@@ -1,0 +1,28 @@
+[package]
+name = "ossue-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+git2 = { workspace = true }
+reqwest = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+futures-util = { workspace = true }
+urlencoding = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+rstest = "0.26"
+tree-fs = "0.3"
