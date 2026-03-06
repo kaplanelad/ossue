@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   MoreVertical, RefreshCw, RotateCw, RotateCcw, Loader2, Plus, StickyNote, Search, X,
   Star, EyeOff, Sparkles, PauseCircle, Inbox, SearchX, CircleDot, GitPullRequest, MessageCircle, Keyboard, FolderGit2,
+  Github, GitlabIcon, ChevronRight,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -65,6 +66,7 @@ export function InboxList() {
   } = useItemStore();
   const { groupByRepository, setGroupByRepository } = useUiStore();
 
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -780,17 +782,33 @@ export function InboxList() {
       <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col">
             {groupByRepository && groupedItems ? (
-              Array.from(groupedItems.entries()).map(([projectId, groupItems]) => {
+              Array.from(groupedItems.entries()).map(([projectId, groupItems], groupIdx) => {
                 const project = projectMap.get(projectId);
-                const label = project ? `${project.owner}/${project.name}` : projectId;
+                const isCollapsed = collapsedGroups.has(projectId);
+                const PlatformIcon = project?.platform === "gitlab" ? GitlabIcon : Github;
                 return (
-                  <div key={projectId}>
-                    <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-muted/50 px-4 py-1.5 text-xs font-medium text-muted-foreground backdrop-blur-sm">
-                      <FolderGit2 className="h-3 w-3" />
-                      {label}
-                      <span className="ml-auto tabular-nums">{groupItems.length}</span>
-                    </div>
-                    {groupItems.map((item) => {
+                  <div key={projectId} className="repo-group-enter" style={{ animationDelay: `${groupIdx * 40}ms` }}>
+                    <button
+                      className="sticky top-0 z-10 flex w-full items-center gap-2.5 border-b border-border/60 bg-background/80 px-4 py-2 text-left backdrop-blur-md transition-colors hover:bg-muted/40"
+                      onClick={() => setCollapsedGroups(prev => {
+                        const next = new Set(prev);
+                        if (next.has(projectId)) next.delete(projectId);
+                        else next.add(projectId);
+                        return next;
+                      })}
+                    >
+                      <ChevronRight className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`} />
+                      <PlatformIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                      <span className="truncate text-xs" style={{ fontFamily: "'Syne', sans-serif" }}>
+                        <span className="text-muted-foreground/60">{project?.owner ?? ""}</span>
+                        <span className="text-muted-foreground/40 mx-0.5">/</span>
+                        <span className="font-semibold text-foreground/80">{project?.name ?? projectId}</span>
+                      </span>
+                      <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                        {groupItems.length}
+                      </span>
+                    </button>
+                    {!isCollapsed && groupItems.map((item) => {
                       const globalIndex = itemIndexMap.get(item.id)!;
                       if (item.item_type === "note") {
                         const proj = projectMap.get(item.project_id);
