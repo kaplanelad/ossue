@@ -77,12 +77,21 @@ function App() {
     initApp();
   }, [initApp]);
 
-  // Cmd+N to open create note dialog
+  // Cmd+N to open create note dialog, Cmd+1-5 to switch tabs
   useEffect(() => {
+    const tabFilters = ["all", "note", "issue", "pr", "discussion"] as const;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey && e.key === "n") {
         e.preventDefault();
         useDraftIssueStore.getState().openCreateNote();
+        return;
+      }
+      if (e.metaKey && !e.shiftKey && !e.altKey) {
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= 5) {
+          e.preventDefault();
+          useAppStore.getState().setItemTypeFilter(tabFilters[num - 1]);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);

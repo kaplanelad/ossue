@@ -124,7 +124,7 @@ export function Sidebar() {
           Filters
         </p>
         <div className="flex flex-col gap-1">
-          {typeFilters.map((f) => (
+          {typeFilters.map((f, index) => (
             <Button
               key={f.value}
               variant={itemTypeFilter === f.value ? "secondary" : "ghost"}
@@ -138,6 +138,9 @@ export function Sidebar() {
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/15 dark:bg-amber-400/15 px-1 text-[10px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
                   {noteCount}
                 </span>
+              )}
+              {!(f.value === "note" && noteCount > 0) && (
+                <span className="ml-auto text-[10px] text-muted-foreground/50">⌘{index + 1}</span>
               )}
             </Button>
           ))}

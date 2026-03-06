@@ -75,6 +75,10 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
               keys={<><Kbd wide>Enter</Kbd><Sep>/</Sep><Kbd>o</Kbd></>}
               action="Open item"
             />
+            <ShortcutRow
+              keys={<><Kbd>⌘</Kbd><Sep>+</Sep><Kbd>1</Kbd><Sep>–</Sep><Kbd>5</Kbd></>}
+              action="Switch tab (All / Notes / Issues / PRs / Discussions)"
+            />
           </Section>
 
           <Section title="Selection">
