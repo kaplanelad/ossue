@@ -112,6 +112,9 @@ interface AppState {
   setShowDismissedOnly: (show: boolean) => void;
   dismissedCounts: import("@/types").DismissedCount[];
 
+  // Persistent note count
+  draftNoteCount: number;
+
   // Refresh interval
   refreshInterval: number;
   setRefreshInterval: (interval: number) => void;
@@ -209,6 +212,9 @@ function getCompositeState(): AppState {
     showDismissedOnly: item.showDismissedOnly,
     setShowDismissedOnly: item.setShowDismissedOnly,
     dismissedCounts: item.dismissedCounts,
+
+    // Note count
+    draftNoteCount: item.draftNoteCount,
 
     // UI
     refreshInterval: ui.refreshInterval,
