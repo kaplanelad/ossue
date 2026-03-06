@@ -21,7 +21,9 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
     }
 }
 
-async fn check_for_update_inner(app: &AppHandle) -> Result<Option<UpdateInfo>, Box<dyn std::error::Error>> {
+async fn check_for_update_inner(
+    app: &AppHandle,
+) -> Result<Option<UpdateInfo>, Box<dyn std::error::Error>> {
     let current_version = app.package_info().version.to_string();
 
     let client = reqwest::Client::new();
@@ -33,9 +35,7 @@ async fn check_for_update_inner(app: &AppHandle) -> Result<Option<UpdateInfo>, B
 
     let body: serde_json::Value = resp.json().await?;
 
-    let tag_name = body["tag_name"]
-        .as_str()
-        .ok_or("missing tag_name")?;
+    let tag_name = body["tag_name"].as_str().ok_or("missing tag_name")?;
 
     let latest_str = tag_name.strip_prefix('v').unwrap_or(tag_name);
     let latest = semver::Version::parse(latest_str)?;
@@ -48,17 +48,8 @@ async fn check_for_update_inner(app: &AppHandle) -> Result<Option<UpdateInfo>, B
     Ok(Some(UpdateInfo {
         current_version,
         latest_version: latest_str.to_string(),
-        release_url: body["html_url"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        release_notes: body["body"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        published_at: body["published_at"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
+        release_url: body["html_url"].as_str().unwrap_or("").to_string(),
+        release_notes: body["body"].as_str().unwrap_or("").to_string(),
+        published_at: body["published_at"].as_str().unwrap_or("").to_string(),
     }))
 }
