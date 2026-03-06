@@ -67,6 +67,7 @@ export function InboxList() {
   const { groupByRepository, setGroupByRepository } = useUiStore();
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const animatedGroupsRef = useRef<Set<string>>(new Set());
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -155,7 +156,10 @@ export function InboxList() {
   }, [filteredItems]);
 
   const groupedItems = useMemo(() => {
-    if (!groupByRepository) return null;
+    if (!groupByRepository) {
+      animatedGroupsRef.current.clear();
+      return null;
+    }
     const groups = new Map<string, typeof filteredItems>();
     for (const item of filteredItems) {
       const key = item.project_id;
@@ -786,8 +790,10 @@ export function InboxList() {
                 const project = projectMap.get(projectId);
                 const isCollapsed = collapsedGroups.has(projectId);
                 const PlatformIcon = project?.platform === "gitlab" ? GitlabIcon : Github;
+                const isNew = !animatedGroupsRef.current.has(projectId);
+                if (isNew) animatedGroupsRef.current.add(projectId);
                 return (
-                  <div key={projectId} className="repo-group-enter" style={{ animationDelay: `${groupIdx * 40}ms` }}>
+                  <div key={projectId} className={isNew ? "repo-group-enter" : ""} style={isNew ? { animationDelay: `${groupIdx * 40}ms` } : undefined}>
                     <button
                       className="sticky top-0 z-10 flex w-full items-center gap-2.5 border-b border-border/60 bg-background/80 px-4 py-2 text-left backdrop-blur-md transition-colors hover:bg-muted/40"
                       onClick={() => setCollapsedGroups(prev => {
