@@ -666,67 +666,44 @@ export function InboxList() {
           >
             <Plus className="h-4 w-4" />
           </Button>
-          {isNotesOnly ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More options">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
-                <DropdownMenuItem onClick={() => window.location.reload()}>
-                  <RotateCw className="h-4 w-4" />
-                  Reload page
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => refreshInbox()}>
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
-                  <Keyboard className="h-4 w-4" />
-                  Keyboard shortcuts
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  disabled={isSyncing || selectedProjectIds.length > 1}
-                  aria-label="Sync options"
-                >
-                  {isSyncing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MoreVertical className="h-4 w-4" />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
-                <DropdownMenuItem onClick={() => window.location.reload()}>
-                  <RotateCw className="h-4 w-4" />
-                  Reload page
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={syncItems} disabled={isSyncing}>
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </DropdownMenuItem>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={isNotesOnly ? () => refreshInbox() : syncItems}
+            disabled={!isNotesOnly && isSyncing}
+            aria-label="Refresh"
+          >
+            {!isNotesOnly && isSyncing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More options">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
+              <DropdownMenuItem onClick={() => window.location.reload()}>
+                <RotateCw className="h-4 w-4" />
+                Reload page
+              </DropdownMenuItem>
+              {!isNotesOnly && (
                 <DropdownMenuItem onClick={fullSync} disabled={isSyncing}>
                   <RotateCcw className="h-4 w-4" />
                   Full sync (restore deleted items)
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
-                  <Keyboard className="h-4 w-4" />
-                  Keyboard shortcuts
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+                <Keyboard className="h-4 w-4" />
+                Keyboard shortcuts
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
