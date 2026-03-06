@@ -20,6 +20,7 @@ import type {
   ProjectSettingEntry,
   DraftIssue,
   CreateIssueResponse,
+  UpdateInfo,
 } from "@/types";
 
 export { listen, type UnlistenFn };
@@ -208,3 +209,7 @@ export const getLogEntries = (
     offset,
   });
 export const clearLogs = () => invoke<void>("clear_logs");
+
+// Updater commands
+export const checkForUpdate = () =>
+  invoke<UpdateInfo | null>("check_for_update");

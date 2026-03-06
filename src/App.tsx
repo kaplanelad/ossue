@@ -4,6 +4,8 @@ import { useAppStore } from "@/stores/appStore";
 import { useDraftIssueStore } from "@/stores/draftIssueStore";
 import { useTheme } from "@/hooks/useTheme";
 import { useAIStreaming } from "@/hooks/useAIStreaming";
+import { useUpdateChecker } from "@/hooks/useUpdateChecker";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { InboxList } from "@/components/layout/InboxList";
 import { ChatPanel } from "@/components/layout/ChatPanel";
@@ -27,6 +29,7 @@ function App() {
   const selectedNoteId = useDraftIssueStore((s) => s.selectedNoteId);
   useTheme();
   useAIStreaming();
+  const { updateInfo, dismissUpdate } = useUpdateChecker();
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -154,6 +157,10 @@ function App() {
           <div className={cn("flex h-screen w-screen overflow-hidden bg-background text-foreground", resolvedTheme === "dark" && "dark")}>
             {currentPage === "settings" && <SettingsPage />}
             {currentPage === "main" && (
+              <div className="flex flex-1 flex-col overflow-hidden">
+                {updateInfo && (
+                  <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
+                )}
               <div className="flex flex-1 overflow-hidden">
                 <Sidebar />
                 <InboxList />
@@ -170,6 +177,7 @@ function App() {
                     {showNotePanel && <NotePanel width={chatWidth} />}
                   </>
                 )}
+              </div>
               </div>
             )}
           </div>
