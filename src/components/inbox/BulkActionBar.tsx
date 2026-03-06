@@ -21,17 +21,14 @@ interface BulkActionBarProps {
 }
 
 const AI_ACTIONS_BY_TYPE: Record<string, AnalysisAction[]> = {
-  pr: ["review", "summarize", "draft_response", "triage", "check_impact"],
-  issue: ["summarize", "draft_response", "triage"],
-  discussion: ["summarize", "draft_response"],
+  pr: ["analyze", "draft_response"],
+  issue: ["analyze", "draft_response"],
+  discussion: ["analyze", "draft_response"],
 };
 
 const ACTION_LABELS: Record<AnalysisAction, string> = {
-  review: "Review",
-  summarize: "Summarize",
+  analyze: "Analyze",
   draft_response: "Draft Response",
-  triage: "Triage",
-  check_impact: "Check Impact",
 };
 
 export function BulkActionBar({

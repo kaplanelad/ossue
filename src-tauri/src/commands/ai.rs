@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::error::CommandError;
 use crate::AppState;
-use ossue_core::enums::{ActionType, ItemType};
+use ossue_core::enums::ActionType;
 use ossue_core::models::chat_message;
 use ossue_core::models::project_settings;
 use ossue_core::models::settings as settings_model;
@@ -192,7 +192,7 @@ pub struct ChatMessageResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyzeActionRequest {
     pub item_id: String,
-    pub action: String, // "review", "draft_response", "summarize", "triage", "check_impact"
+    pub action: String, // "analyze", "draft_response"
 }
 
 #[tauri::command]
@@ -288,10 +288,7 @@ pub async fn send_chat_message(
         let action_type =
             last_action
                 .map(|h| h.action_type)
-                .unwrap_or_else(|| match ctx.item.item_type {
-                    ItemType::PullRequest => ActionType::Review,
-                    _ => ActionType::Summarize,
-                });
+                .unwrap_or(ActionType::Analyze);
 
         // 9. Get conversation history
         let history = chat_message::Entity::find()
@@ -731,11 +728,8 @@ pub async fn analyze_item_action(
 
     // Parse action string into ActionType enum
     let action_type = match request.action.as_str() {
-        "review" => ActionType::Review,
+        "analyze" => ActionType::Analyze,
         "draft_response" => ActionType::DraftResponse,
-        "summarize" => ActionType::Summarize,
-        "triage" => ActionType::Triage,
-        "check_impact" => ActionType::CheckImpact,
         _ => {
             return Err(CommandError::Internal {
                 message: format!("Unknown action: {}", request.action),

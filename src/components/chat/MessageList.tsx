@@ -4,7 +4,7 @@ import { AIMessage } from "./AIMessage";
 import { UserMessage } from "./UserMessage";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, MessageSquare, List, Tag, Zap } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -12,7 +12,6 @@ interface MessageListProps {
   isStreaming: boolean;
   isLoading: boolean;
   analysisStatus: string | null;
-  itemType: "issue" | "pr" | "discussion" | "note";
   onAnalyzeAction: (action: AnalysisAction) => void;
 }
 
@@ -22,7 +21,6 @@ export function MessageList({
   isStreaming,
   isLoading,
   analysisStatus,
-  itemType,
   onAnalyzeAction,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -35,35 +33,11 @@ export function MessageList({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
         <img src="/app-icon.png" alt="" className="h-10 w-10 opacity-40" />
-        <p className="text-sm">Choose an analysis action</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {itemType === "pr" && (
-            <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("review")}>
-              <Search className="mr-1.5 h-3.5 w-3.5" />
-              Review Code
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("draft_response")}>
-            <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-            Draft Response
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("summarize")}>
-            <List className="mr-1.5 h-3.5 w-3.5" />
-            Summarize
-          </Button>
-          {itemType === "issue" && (
-            <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("triage")}>
-              <Tag className="mr-1.5 h-3.5 w-3.5" />
-              Triage
-            </Button>
-          )}
-          {itemType === "pr" && (
-            <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("check_impact")}>
-              <Zap className="mr-1.5 h-3.5 w-3.5" />
-              Check Impact
-            </Button>
-          )}
-        </div>
+        <p className="text-sm">Get a full briefing on this item</p>
+        <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("analyze")}>
+          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+          Analyze
+        </Button>
       </div>
     );
   }

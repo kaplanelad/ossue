@@ -147,31 +147,19 @@ impl fmt::Display for NoteType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
 pub enum ActionType {
-    #[sea_orm(string_value = "review")]
-    #[serde(rename = "review")]
-    Review,
+    #[sea_orm(string_value = "analyze")]
+    #[serde(rename = "analyze")]
+    Analyze,
     #[sea_orm(string_value = "draft_response")]
     #[serde(rename = "draft_response")]
     DraftResponse,
-    #[sea_orm(string_value = "summarize")]
-    #[serde(rename = "summarize")]
-    Summarize,
-    #[sea_orm(string_value = "triage")]
-    #[serde(rename = "triage")]
-    Triage,
-    #[sea_orm(string_value = "check_impact")]
-    #[serde(rename = "check_impact")]
-    CheckImpact,
 }
 
 impl fmt::Display for ActionType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Review => write!(f, "review"),
+            Self::Analyze => write!(f, "analyze"),
             Self::DraftResponse => write!(f, "draft_response"),
-            Self::Summarize => write!(f, "summarize"),
-            Self::Triage => write!(f, "triage"),
-            Self::CheckImpact => write!(f, "check_impact"),
         }
     }
 }
@@ -366,11 +354,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case(ActionType::Review, "review")]
+    #[case(ActionType::Analyze, "analyze")]
     #[case(ActionType::DraftResponse, "draft_response")]
-    #[case(ActionType::Summarize, "summarize")]
-    #[case(ActionType::Triage, "triage")]
-    #[case(ActionType::CheckImpact, "check_impact")]
     fn action_type_display(#[case] variant: ActionType, #[case] expected: &str) {
         assert_eq!(variant.to_string(), expected);
     }

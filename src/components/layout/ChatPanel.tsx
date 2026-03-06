@@ -84,7 +84,6 @@ export function ChatPanel({ width }: ChatPanelProps) {
         isStreaming={isStreaming}
         isLoading={isLoading}
         analysisStatus={analysisStatus}
-        itemType={selectedItem.item_type}
         onAnalyzeAction={analyzeWithAction}
       />
 
@@ -92,7 +91,6 @@ export function ChatPanel({ width }: ChatPanelProps) {
       <ChatInput
         onSend={sendMessage}
         disabled={isLoading || isStreaming}
-        itemType={selectedItem.item_type}
         onAnalyzeAction={analyzeWithAction}
         onClearChat={clearMessages}
         hasMessages={messages.length > 0}
