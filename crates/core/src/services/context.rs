@@ -388,50 +388,40 @@ impl ContextService {
     /// Build a system prompt tailored to the requested action.
     pub fn build_system_prompt(action: &ActionType, item_type: &ItemType) -> String {
         match action {
-            ActionType::Analyze => {
-                match item_type {
-                    ItemType::PullRequest => {
-                        "You are an expert code reviewer and maintainer's assistant. \
+            ActionType::Analyze => match item_type {
+                ItemType::PullRequest => {
+                    "You are an expert code reviewer and maintainer's assistant. \
                          Analyze this pull request: summarize the changes, assess impact \
                          and code quality, and suggest a review comment."
-                            .to_string()
-                    }
-                    ItemType::Discussion => {
-                        "You are a maintainer's assistant. Analyze this discussion and give \
+                        .to_string()
+                }
+                ItemType::Discussion => {
+                    "You are a maintainer's assistant. Analyze this discussion and give \
                          the maintainer everything they need to take action: what it's about, \
                          whether maintainer input is needed, and a suggested response."
-                            .to_string()
-                    }
-                    _ => {
-                        "You are a maintainer's assistant. Analyze this issue and give \
+                        .to_string()
+                }
+                _ => "You are a maintainer's assistant. Analyze this issue and give \
                          the maintainer everything they need to take action: what it's about, \
                          how urgent it is, and a suggested response."
-                            .to_string()
-                    }
-                }
-            }
-            ActionType::DraftResponse => {
-                match item_type {
-                    ItemType::Issue => {
-                        "You are an experienced open source maintainer drafting a \
+                    .to_string(),
+            },
+            ActionType::DraftResponse => match item_type {
+                ItemType::Issue => "You are an experienced open source maintainer drafting a \
                          response to an issue reporter. Be welcoming, clear, and helpful. \
                          If more info is needed, ask specific questions."
-                            .to_string()
-                    }
-                    ItemType::Discussion => {
-                        "You are an experienced open source maintainer responding to a \
+                    .to_string(),
+                ItemType::Discussion => {
+                    "You are an experienced open source maintainer responding to a \
                          community discussion. Address the user's actual problem. Point to \
                          relevant docs or settings. Be welcoming to community participation."
-                            .to_string()
-                    }
-                    _ => {
-                        "You are an experienced open source maintainer drafting a \
+                        .to_string()
+                }
+                _ => "You are an experienced open source maintainer drafting a \
                          response to a contributor. Be welcoming, clear, and helpful. \
                          Reference project guidelines when relevant."
-                            .to_string()
-                    }
-                }
-            }
+                    .to_string(),
+            },
         }
     }
 

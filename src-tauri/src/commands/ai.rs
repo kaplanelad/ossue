@@ -285,10 +285,9 @@ pub async fn send_chat_message(
             .ok()
             .flatten();
 
-        let action_type =
-            last_action
-                .map(|h| h.action_type)
-                .unwrap_or(ActionType::Analyze);
+        let action_type = last_action
+            .map(|h| h.action_type)
+            .unwrap_or(ActionType::Analyze);
 
         // 9. Get conversation history
         let history = chat_message::Entity::find()
