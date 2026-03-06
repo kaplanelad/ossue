@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect, useCallback, useState } from "react";
 import { errorMessage } from "@/lib/utils";
 import { useItems } from "@/hooks/useItems";
 import { useAppStore } from "@/stores/appStore";
+import { useItemStore } from "@/stores/itemStore";
 import { useDraftIssueStore } from "@/stores/draftIssueStore";
 import { InboxItem } from "@/components/inbox/InboxItem";
 import { NoteItem } from "@/components/notes/NoteItem";
@@ -11,9 +12,10 @@ import { CreateNoteDialog } from "@/components/notes/CreateNoteDialog";
 import { SyncProgressBar } from "@/components/inbox/SyncProgressBar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   MoreVertical, RefreshCw, RotateCw, RotateCcw, Loader2, Plus, StickyNote, Search, X,
-  Star, EyeOff, Sparkles, PauseCircle, Inbox, SearchX, CircleDot, GitPullRequest, MessageCircle,
+  Star, EyeOff, Sparkles, PauseCircle, Inbox, SearchX, CircleDot, GitPullRequest, MessageCircle, Keyboard,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,27 +23,38 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
 import type { AnalysisAction } from "@/types";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 
 export function InboxList() {
   const { items, syncItems, isSyncing, syncDisabled, setSelectedItemId, selectedItemId, markRead, markUnread, deleteItem, restoreItem, fullSync } = useItems();
-  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
+  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
   const {
     selectedNoteId,
     setSelectedNoteId,
     selectedNoteIds,
     toggleNoteSelection,
     clearNoteSelection,
+    lastClickedNoteIndex,
+    setLastClickedNoteIndex,
     isGenerating,
     setIsGenerating,
     openCreateNote,
     openEditNote,
   } = useDraftIssueStore();
+  const {
+    lastClickedIndex,
+    setLastClickedIndex,
+    focusedIndex,
+    setFocusedIndex,
+  } = useItemStore();
 
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [isSearchOpen, setIsSearchOpen] = useState(searchQuery.length > 0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -120,6 +133,72 @@ export function InboxList() {
     () => filteredItems.filter((i) => i.item_type === "note" && selectedNoteIdSet.has(i.id)),
     [filteredItems, selectedNoteIdSet]
   );
+
+  // Range selection handler for shift+click
+  const handleToggleSelectItem = useCallback(
+    (id: string, index: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastClickedIndex !== null) {
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+        const rangeIds = filteredItems
+          .slice(start, end + 1)
+          .filter((item) => item.item_type !== "note")
+          .map((item) => item.id);
+        const merged = new Set([...selectedItemIds, ...rangeIds]);
+        selectAllItems(Array.from(merged));
+      } else {
+        toggleItemSelection(id);
+      }
+      setLastClickedIndex(index);
+    },
+    [lastClickedIndex, filteredItems, selectedItemIds, selectAllItems, toggleItemSelection, setLastClickedIndex]
+  );
+
+  const handleToggleSelectNote = useCallback(
+    (id: string, index: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastClickedNoteIndex !== null) {
+        const start = Math.min(lastClickedNoteIndex, index);
+        const end = Math.max(lastClickedNoteIndex, index);
+        const rangeIds = filteredItems
+          .slice(start, end + 1)
+          .filter((item) => item.item_type === "note")
+          .map((item) => item.id);
+        const merged = new Set([...selectedNoteIds, ...rangeIds]);
+        useDraftIssueStore.setState({ selectedNoteIds: Array.from(merged) });
+      } else {
+        toggleNoteSelection(id);
+      }
+      setLastClickedNoteIndex(index);
+    },
+    [lastClickedNoteIndex, filteredItems, selectedNoteIds, toggleNoteSelection, setLastClickedNoteIndex]
+  );
+
+  // Select All checkbox logic
+  const nonNoteItems = useMemo(
+    () => filteredItems.filter((item) => item.item_type !== "note"),
+    [filteredItems]
+  );
+  const noteItems = useMemo(
+    () => filteredItems.filter((item) => item.item_type === "note"),
+    [filteredItems]
+  );
+  const allItemsSelected = nonNoteItems.length > 0 && nonNoteItems.every((item) => selectedIdSet.has(item.id));
+  const allNotesSelected = noteItems.length > 0 && noteItems.every((item) => selectedNoteIdSet.has(item.id));
+  const someSelected = selectedItemIds.length > 0 || selectedNoteIds.length > 0;
+  const allSelected = (nonNoteItems.length === 0 || allItemsSelected) && (noteItems.length === 0 || allNotesSelected) && filteredItems.length > 0;
+
+  const handleSelectAll = useCallback(() => {
+    if (allSelected) {
+      clearSelection();
+      clearNoteSelection();
+    } else {
+      if (nonNoteItems.length > 0) selectAllItems(nonNoteItems.map((i) => i.id));
+      if (noteItems.length > 0) useDraftIssueStore.setState({ selectedNoteIds: noteItems.map((i) => i.id) });
+    }
+  }, [allSelected, nonNoteItems, noteItems, selectAllItems, clearSelection, clearNoteSelection]);
+
+  // Keyboard navigation
+  const itemRefs = useRef<Map<number, HTMLElement>>(new Map());
 
   const handleItemClick = async (id: string) => {
     setSelectedNoteId(null);
@@ -204,6 +283,110 @@ export function InboxList() {
     clearSelection();
     setSelectedNoteId(id);
   };
+
+  // Keyboard navigation effect
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
+        return;
+      }
+
+      const total = filteredItems.length;
+      if (total === 0) return;
+
+      const current = focusedIndex ?? -1;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = Math.min(current + 1, total - 1);
+        setFocusedIndex(next);
+        itemRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
+        if (e.shiftKey) {
+          const item = filteredItems[next];
+          if (item.item_type === "note") {
+            if (!selectedNoteIdSet.has(item.id)) toggleNoteSelection(item.id);
+          } else {
+            if (!selectedIdSet.has(item.id)) toggleItemSelection(item.id);
+          }
+        }
+        return;
+      }
+
+      if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = Math.max(current - 1, 0);
+        setFocusedIndex(next);
+        itemRefs.current.get(next)?.scrollIntoView({ block: "nearest" });
+        if (e.shiftKey) {
+          const item = filteredItems[next];
+          if (item.item_type === "note") {
+            if (!selectedNoteIdSet.has(item.id)) toggleNoteSelection(item.id);
+          } else {
+            if (!selectedIdSet.has(item.id)) toggleItemSelection(item.id);
+          }
+        }
+        return;
+      }
+
+      if (e.key === "x" && current >= 0 && current < total) {
+        e.preventDefault();
+        const item = filteredItems[current];
+        if (item.item_type === "note") {
+          toggleNoteSelection(item.id);
+        } else {
+          toggleItemSelection(item.id);
+        }
+        return;
+      }
+
+      if ((e.key === "Enter" || e.key === "o") && current >= 0 && current < total) {
+        e.preventDefault();
+        const item = filteredItems[current];
+        if (item.item_type === "note") {
+          handleNoteClick(item.id);
+        } else {
+          handleItemClick(item.id);
+        }
+        return;
+      }
+
+      if (e.key === "e" && !showDismissedOnly) {
+        e.preventDefault();
+        if (selectedItemIds.length > 0) {
+          handleBulkDelete();
+        } else if (current >= 0 && current < total) {
+          const item = filteredItems[current];
+          if (item.item_type !== "note") {
+            deleteItem(item.id);
+          }
+        }
+        return;
+      }
+
+      if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        handleSelectAll();
+        return;
+      }
+
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [focusedIndex, filteredItems, selectedIdSet, selectedNoteIdSet, selectedItemIds, setFocusedIndex, toggleItemSelection, toggleNoteSelection, showDismissedOnly, handleSelectAll, deleteItem, handleBulkDelete, handleItemClick, handleNoteClick]);
+
+  // Reset focused index when filtered items change
+  useEffect(() => {
+    if (focusedIndex !== null && focusedIndex >= filteredItems.length) {
+      setFocusedIndex(filteredItems.length > 0 ? filteredItems.length - 1 : null);
+    }
+  }, [filteredItems.length, focusedIndex, setFocusedIndex]);
 
   const handleNoteGenerate = async (noteId: string) => {
     setIsGenerating(noteId, true);
@@ -450,6 +633,14 @@ export function InboxList() {
           </div>
         ) : (
           <>
+            {filteredItems.length > 0 && (
+              <Checkbox
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onClick={handleSelectAll}
+                className="shrink-0"
+                aria-label="Select all"
+              />
+            )}
             <h2 className="min-w-0 truncate text-base font-bold">{headerTitle}</h2>
             <div className="flex-1" />
           </>
@@ -482,7 +673,7 @@ export function InboxList() {
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
                 <DropdownMenuItem onClick={() => window.location.reload()}>
                   <RotateCw className="h-4 w-4" />
                   Reload page
@@ -490,6 +681,11 @@ export function InboxList() {
                 <DropdownMenuItem onClick={() => refreshInbox()}>
                   <RefreshCw className="h-4 w-4" />
                   Refresh
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+                  <Keyboard className="h-4 w-4" />
+                  Keyboard shortcuts
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -510,7 +706,7 @@ export function InboxList() {
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
                 <DropdownMenuItem onClick={() => window.location.reload()}>
                   <RotateCw className="h-4 w-4" />
                   Reload page
@@ -522,6 +718,11 @@ export function InboxList() {
                 <DropdownMenuItem onClick={fullSync} disabled={isSyncing}>
                   <RotateCcw className="h-4 w-4" />
                   Full sync (restore deleted items)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShortcutsOpen(true)}>
+                  <Keyboard className="h-4 w-4" />
+                  Keyboard shortcuts
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -543,18 +744,23 @@ export function InboxList() {
       ) : (
       <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col">
-            {filteredItems.map((item) => {
+            {filteredItems.map((item, index) => {
               if (item.item_type === "note") {
                 const project = projectMap.get(item.project_id);
                 return (
                   <NoteItem
                     key={`note-${item.id}`}
+                    ref={(el: HTMLElement | null) => {
+                      if (el) itemRefs.current.set(index, el);
+                      else itemRefs.current.delete(index);
+                    }}
                     note={item}
                     projectLabel={project ? `${project.owner}/${project.name}` : undefined}
                     isSelected={item.id === selectedNoteId}
                     isChecked={selectedNoteIdSet.has(item.id)}
+                    isFocused={index === focusedIndex}
                     isGenerating={isGenerating[item.id] || false}
-                    onToggleSelect={() => toggleNoteSelection(item.id)}
+                    onToggleSelect={(e: React.MouseEvent) => handleToggleSelectNote(item.id, index, e)}
                     onClick={() => handleNoteClick(item.id)}
                     onDelete={() => handleNoteDelete(item.id)}
                     onGenerate={() => handleNoteGenerate(item.id)}
@@ -567,6 +773,10 @@ export function InboxList() {
               return (
                 <InboxItem
                   key={`item-${item.id}`}
+                  ref={(el: HTMLElement | null) => {
+                    if (el) itemRefs.current.set(index, el);
+                    else itemRefs.current.delete(index);
+                  }}
                   item={item}
                   repoName={project ? `${project.owner}/${project.name}` : undefined}
                   platform={project?.platform}
@@ -574,7 +784,8 @@ export function InboxList() {
                   isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
                   hasAnalysis={analyzedItemIds.has(item.id)}
                   isChecked={selectedIdSet.has(item.id)}
-                  onToggleSelect={() => toggleItemSelection(item.id)}
+                  isFocused={index === focusedIndex}
+                  onToggleSelect={(e: React.MouseEvent) => handleToggleSelectItem(item.id, index, e)}
                   onClick={() => handleItemClick(item.id)}
                   onToggleStar={() => handleToggleStar(item)}
                   onMarkUnread={() => markUnread(item.id)}
@@ -614,6 +825,7 @@ export function InboxList() {
         />
       )}
       <CreateNoteDialog />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -34,8 +35,9 @@ interface NoteItemProps {
   projectLabel?: string;
   isSelected: boolean;
   isChecked: boolean;
+  isFocused?: boolean;
   isGenerating: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (e: React.MouseEvent) => void;
   onClick: () => void;
   onDelete: () => void;
   onGenerate: () => void;
@@ -43,11 +45,12 @@ interface NoteItemProps {
   onToggleStar: () => void;
 }
 
-export function NoteItem({
+export const NoteItem = forwardRef<HTMLElement, NoteItemProps>(function NoteItem({
   note,
   projectLabel,
   isSelected,
   isChecked,
+  isFocused,
   isGenerating,
   onToggleSelect,
   onClick,
@@ -55,7 +58,7 @@ export function NoteItem({
   onGenerate,
   onEdit,
   onToggleStar,
-}: NoteItemProps) {
+}, ref) {
   const noteData = note.type_data.kind === "note" ? note.type_data : null;
   const status = noteData?.draft_status || "draft";
   const config = statusConfig[status] || statusConfig.draft;
@@ -69,8 +72,9 @@ export function NoteItem({
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
-          className={`note-item-enter block w-full border-b px-4 py-3.5 text-left transition-colors hover:bg-muted/50 ${
-            isSelected ? "bg-muted border-l-2 border-l-amber-500 dark:border-l-amber-400" : ""
+          ref={ref as React.Ref<HTMLButtonElement>}
+          className={`note-item-enter block w-full border-l-2 border-b px-4 py-3.5 text-left transition-colors hover:bg-muted/50 ${
+            isSelected ? "bg-muted border-l-amber-500 dark:border-l-amber-400" : isFocused ? "border-l-primary/30" : "border-l-transparent"
           }`}
           onClick={onClick}
         >
@@ -79,7 +83,7 @@ export function NoteItem({
               checked={isChecked}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleSelect();
+                onToggleSelect(e as unknown as React.MouseEvent);
               }}
               className="shrink-0"
             />
@@ -173,4 +177,4 @@ export function NoteItem({
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});

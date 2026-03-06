@@ -71,10 +71,38 @@ const typeFilters: { value: ItemTypeFilter; label: string; icon: React.ReactNode
 
 export function Sidebar() {
   const { projects, selectedProjectIds, toggleProjectSelection, clearProjectSelection, fetchProjects } = useProjects();
-  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox } = useAppStore();
+  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts } = useAppStore();
   const [version, setVersion] = useState("");
+  // Items filtered by project + type filter (for "Show Only" counters)
+  const baseFilteredItems = useMemo(() => {
+    let result = items;
+    if (selectedProjectIds.length > 0) {
+      const selected = new Set(selectedProjectIds);
+      result = result.filter((i) => selected.has(i.project_id));
+    }
+    if (itemTypeFilter !== "all") {
+      result = result.filter((i) => i.item_type === itemTypeFilter);
+    }
+    return result;
+  }, [items, selectedProjectIds, itemTypeFilter]);
+
   const noteCount = useMemo(() => items.filter((i) => i.item_type === "note").length, [items]);
-  const analyzedNoteCount = useMemo(() => items.filter((i) => i.item_type === "note" && i.type_data.kind === "note" && i.type_data.draft_status === "ready" && !analyzedItemIds.has(i.id)).length, [items, analyzedItemIds]);
+  const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
+  const analyzedCount = useMemo(() => {
+    const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));
+    const readyNotes = baseFilteredItems.filter((i) => i.item_type === "note" && i.type_data.kind === "note" && i.type_data.draft_status === "ready" && !analyzedItemIds.has(i.id));
+    return analyzed.length + readyNotes.length;
+  }, [baseFilteredItems, analyzedItemIds]);
+  const dismissedCount = useMemo(() => {
+    const selectedSet = selectedProjectIds.length > 0 ? new Set(selectedProjectIds) : null;
+    return dismissedCounts
+      .filter((c) => {
+        if (selectedSet && !selectedSet.has(c.project_id)) return false;
+        if (itemTypeFilter !== "all" && c.item_type !== itemTypeFilter) return false;
+        return true;
+      })
+      .reduce((sum, c) => sum + c.count, 0);
+  }, [dismissedCounts, selectedProjectIds, itemTypeFilter]);
 
   useEffect(() => {
     getVersion().then(setVersion);
@@ -131,8 +159,8 @@ export function Sidebar() {
           >
             <Sparkles className="h-4 w-4" />
             AI Analyzed
-            {(analyzedItemIds.size + analyzedNoteCount) > 0 && (
-              <span className="ml-auto text-xs text-muted-foreground">{analyzedItemIds.size + analyzedNoteCount}</span>
+            {analyzedCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">{analyzedCount}</span>
             )}
           </Button>
           <Button
@@ -147,10 +175,8 @@ export function Sidebar() {
           >
             <Star className="h-4 w-4" />
             Starred
-            {items.filter((i) => i.is_starred).length > 0 && (
-              <span className="ml-auto text-xs text-muted-foreground">
-                {items.filter((i) => i.is_starred).length}
-              </span>
+            {starredCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">{starredCount}</span>
             )}
           </Button>
           <Button
@@ -166,6 +192,9 @@ export function Sidebar() {
           >
             <EyeOff className="h-4 w-4" />
             Dismissed
+            {dismissedCount > 0 && (
+              <span className="ml-auto text-xs text-muted-foreground">{dismissedCount}</span>
+            )}
           </Button>
         </div>
       </div>

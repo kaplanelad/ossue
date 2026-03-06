@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi } from "@/lib/tauri";
-import type { Item, ItemTypeFilter } from "@/types";
+import type { Item, ItemTypeFilter, DismissedCount } from "@/types";
 import { useProjectStore } from "./projectStore";
 
 interface ItemState {
@@ -21,6 +21,12 @@ interface ItemState {
   selectAllItems: (ids: string[]) => void;
   clearSelection: () => void;
 
+  // Focus & range selection
+  lastClickedIndex: number | null;
+  focusedIndex: number | null;
+  setLastClickedIndex: (index: number | null) => void;
+  setFocusedIndex: (index: number | null) => void;
+
   // Filters
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -30,6 +36,9 @@ interface ItemState {
   setShowStarredOnly: (show: boolean) => void;
   showDismissedOnly: boolean;
   setShowDismissedOnly: (show: boolean) => void;
+
+  // Dismissed counts (per project+type)
+  dismissedCounts: DismissedCount[];
 
   // Pagination
   nextCursor: string | null;
@@ -95,7 +104,12 @@ export const useItemStore = create<ItemState>((set) => ({
         : [...state.selectedItemIds, id],
     })),
   selectAllItems: (ids) => set({ selectedItemIds: ids }),
-  clearSelection: () => set({ selectedItemIds: [] }),
+  clearSelection: () => set({ selectedItemIds: [], lastClickedIndex: null }),
+
+  lastClickedIndex: null,
+  focusedIndex: null,
+  setLastClickedIndex: (index) => set({ lastClickedIndex: index }),
+  setFocusedIndex: (index) => set({ focusedIndex: index }),
 
   searchQuery: "",
   setSearchQuery: (query) => set({ searchQuery: query, selectedItemIds: [] }),
@@ -108,6 +122,8 @@ export const useItemStore = create<ItemState>((set) => ({
 
   showDismissedOnly: false,
   setShowDismissedOnly: (show) => set({ showDismissedOnly: show, selectedItemIds: [] }),
+
+  dismissedCounts: [],
 
   nextCursor: null,
   hasMore: false,
@@ -143,6 +159,7 @@ export const useItemStore = create<ItemState>((set) => ({
         items: response.items,
         nextCursor: response.next_cursor,
         hasMore: response.has_more,
+        dismissedCounts: response.dismissed_counts,
       });
     } catch (e) {
       console.error("Failed to fetch inbox:", e);
@@ -181,6 +198,7 @@ export const useItemStore = create<ItemState>((set) => ({
         items: [...prev.items, ...response.items],
         nextCursor: response.next_cursor,
         hasMore: response.has_more,
+        dismissedCounts: response.dismissed_counts,
         isLoadingMore: false,
       }));
     } catch (e) {

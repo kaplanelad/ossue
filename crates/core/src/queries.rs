@@ -134,6 +134,48 @@ pub async fn list_items(
     })
 }
 
+/// Count dismissed items grouped by (project_id, item_type).
+pub async fn count_dismissed_grouped(
+    db: &DatabaseConnection,
+) -> Result<Vec<DismissedCount>, sea_orm::DbErr> {
+    use sea_orm::FromQueryResult;
+
+    #[derive(Debug, FromQueryResult)]
+    struct Row {
+        project_id: String,
+        item_type: String,
+        count: i64,
+    }
+
+    let rows = item::Entity::find()
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Dismissed))
+        .select_only()
+        .column(item::Column::ProjectId)
+        .column(item::Column::ItemType)
+        .column_as(item::Column::Id.count(), "count")
+        .group_by(item::Column::ProjectId)
+        .group_by(item::Column::ItemType)
+        .into_model::<Row>()
+        .all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| DismissedCount {
+            project_id: r.project_id,
+            item_type: r.item_type,
+            count: r.count as u64,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DismissedCount {
+    pub project_id: String,
+    pub item_type: String,
+    pub count: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,5 +774,91 @@ mod tests {
 
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].title, "Dismissed");
+    }
+
+    #[tokio::test]
+    async fn count_dismissed_grouped_by_project_and_type() {
+        let db = setup_test_db().await;
+        let connector = ConnectorFactory::default().create(&db).await;
+        let project_a = ProjectFactory::default()
+            .name("project-a")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+        let project_b = ProjectFactory::default()
+            .name("project-b")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+
+        // Project A: 2 dismissed issues, 1 dismissed PR, 1 pending
+        ItemFactory::new(&project_a.id, 1)
+            .item_type(ItemType::Issue)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 2)
+            .item_type(ItemType::Issue)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 3)
+            .item_type(ItemType::PullRequest)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 4)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+
+        // Project B: 1 dismissed issue
+        ItemFactory::new(&project_b.id, 5)
+            .item_type(ItemType::Issue)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+
+        let counts = count_dismissed_grouped(&db).await.unwrap();
+
+        // Should have 3 groups: (A, issue), (A, pr), (B, issue)
+        assert_eq!(counts.len(), 3);
+
+        let a_issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a_issues, 2);
+
+        let a_prs: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id && c.item_type == "pr")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a_prs, 1);
+
+        let b_issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_b.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(b_issues, 1);
+    }
+
+    #[tokio::test]
+    async fn count_dismissed_grouped_empty_when_none_dismissed() {
+        let (db, project) = setup().await;
+        ItemFactory::new(&project.id, 1)
+            .title("Pending item")
+            .create(&db)
+            .await;
+
+        let counts = count_dismissed_grouped(&db).await.unwrap();
+        assert!(counts.is_empty());
     }
 }

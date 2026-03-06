@@ -55,8 +55,15 @@ export interface Item {
   updated_at: string;
 }
 
+export interface DismissedCount {
+  project_id: string;
+  item_type: string;
+  count: number;
+}
+
 export interface ItemPageResponse {
   items: Item[];
   next_cursor: string | null;
   has_more: boolean;
+  dismissed_counts: DismissedCount[];
 }
