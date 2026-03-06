@@ -103,6 +103,14 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
 
           <Section title="Actions">
             <ShortcutRow keys={<Kbd>e</Kbd>} action="Dismiss selected / focused" />
+            <ShortcutRow
+              keys={<><Kbd>⌘</Kbd><Sep>+</Sep><Kbd>n</Kbd></>}
+              action="Create new note"
+            />
+            <ShortcutRow
+              keys={<><Kbd>⌘</Kbd><Sep>+</Sep><Kbd>r</Kbd></>}
+              action="Refresh inbox"
+            />
             <ShortcutRow keys={<Kbd>?</Kbd>} action="Show this help" />
           </Section>
         </div>
