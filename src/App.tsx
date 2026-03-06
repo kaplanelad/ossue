@@ -182,7 +182,7 @@ function App() {
             )}
           </div>
         )}
-        <Toaster position="bottom-right" />
+        <Toaster position="bottom-center" offset={48} />
       </TooltipProvider>
     </ErrorBoundary>
   );
