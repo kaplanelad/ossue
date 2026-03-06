@@ -516,12 +516,14 @@ pub async fn generate_issue_from_draft(
             }
         };
 
-        let prompt_text = format!(
-            "System: {}\n\nUser: {}",
-            DRAFT_ISSUE_SYSTEM_PROMPT, user_message
-        );
-
-        let mut args = vec!["-p".to_string(), prompt_text];
+        let mut args = vec![
+            "-p".to_string(),
+            user_message.clone(),
+            "--system-prompt".to_string(),
+            DRAFT_ISSUE_SYSTEM_PROMPT.to_string(),
+            "--output-format".to_string(),
+            "text".to_string(),
+        ];
         if let Some(ref m) = ai_model {
             args.push("--model".to_string());
             args.push(m.clone());
