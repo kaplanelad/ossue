@@ -20,8 +20,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import * as api from "@/lib/tauri";
 
-const MIN_CHAT_WIDTH = 300;
-const MAX_CHAT_WIDTH = 800;
+const MIN_CHAT_WIDTH = 200;
+const MAX_CHAT_WIDTH = 1200;
 const DEFAULT_CHAT_WIDTH = 480;
 
 function App() {
