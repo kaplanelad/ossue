@@ -10,7 +10,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { CircleDot, GitPullRequest, MessageSquare, StickyNote, MailOpen, EyeOff, Inbox, Loader2, Sparkles, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { CircleDot, GitPullRequest, MessageSquare, StickyNote, MailOpen, EyeOff, Inbox, Loader2, Sparkles, ChevronDown, ChevronUp, Star, Link2 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 function stripMarkdown(text: string): string {
@@ -61,9 +61,10 @@ interface InboxItemProps {
   onDelete: () => void;
   onRestore?: () => void;
   isDismissedView?: boolean;
+  hasLinkedItems?: boolean;
 }
 
-export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView }, ref) {
+export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView, hasLinkedItems }, ref) {
   const [bodyExpanded, setBodyExpanded] = useState(false);
   const timeAgo = formatTimeAgo(item.updated_at);
   const strippedBody = item.body ? stripMarkdown(item.body) : "";
@@ -151,6 +152,9 @@ export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxI
               >
                 {repoName}
               </Badge>
+            )}
+            {hasLinkedItems && (
+              <span title="Has linked items"><Link2 className="h-3 w-3 shrink-0 text-blue-500" /></span>
             )}
             {item.type_data.kind !== "note" && item.type_data.comments_count > 0 && (
               <span className="ml-auto flex shrink-0 items-center gap-1">

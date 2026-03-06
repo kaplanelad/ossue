@@ -2,9 +2,11 @@ import { useAppStore } from "@/stores/appStore";
 import { useChat } from "@/hooks/useChat";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, X, Copy, Check } from "lucide-react";
+import { ExternalLink, Trash2, X, Copy, Check, CircleDot, GitPullRequest, Link2 } from "lucide-react";
+import { findLinkedItems } from "@/lib/linkedItems";
+import type { Item } from "@/types";
 
 interface ChatPanelProps {
   width: number;
@@ -13,6 +15,15 @@ interface ChatPanelProps {
 export function ChatPanel({ width }: ChatPanelProps) {
   const { selectedItemId, items, setSelectedItemId } = useAppStore();
   const selectedItem = items.find((i) => i.id === selectedItemId);
+
+  const linkedItems = useMemo(
+    () => (selectedItem ? findLinkedItems(selectedItem, items) : []),
+    [selectedItem, items]
+  );
+
+  const handleNavigateToItem = async (item: Item) => {
+    setSelectedItemId(item.id);
+  };
 
   const {
     messages,
@@ -76,6 +87,28 @@ export function ChatPanel({ width }: ChatPanelProps) {
           </Button>
         </div>
       </div>
+
+      {/* Linked items */}
+      {linkedItems.length > 0 && (
+        <div className="flex items-center gap-1.5 border-b px-4 py-1.5 overflow-x-auto">
+          <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />
+          {linkedItems.map((linked) => (
+            <button
+              key={linked.id}
+              className="inline-flex items-center gap-1 rounded-md bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+              onClick={() => handleNavigateToItem(linked)}
+              title={linked.title}
+            >
+              {linked.item_type === "pr" ? (
+                <GitPullRequest className="h-3 w-3" />
+              ) : (
+                <CircleDot className="h-3 w-3" />
+              )}
+              <span className="max-w-[150px] truncate">#{linked.type_data.kind !== "note" ? linked.type_data.external_id : ""} {linked.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Messages */}
       <MessageList

@@ -6,6 +6,7 @@ import { useItemStore } from "@/stores/itemStore";
 import { useDraftIssueStore } from "@/stores/draftIssueStore";
 import { useUiStore } from "@/stores/uiStore";
 import { InboxItem } from "@/components/inbox/InboxItem";
+import { extractLinkedIssueNumbers } from "@/lib/linkedItems";
 import { NoteItem } from "@/components/notes/NoteItem";
 import { BulkActionBar } from "@/components/inbox/BulkActionBar";
 import { NoteBulkActionBar } from "@/components/notes/NoteBulkActionBar";
@@ -128,6 +129,31 @@ export function InboxList() {
     }
     return result;
   }, [items, selectedProjectIds, itemTypeFilter, showAnalyzedOnly, analyzedItemIds, showStarredOnly]);
+
+  // Compute which items have linked PR/issue references
+  const linkedItemIds = useMemo(() => {
+    const ids = new Set<string>();
+    const byProjectAndNumber = new Map<string, Set<number>>();
+    // Collect all issue numbers referenced by PRs
+    for (const item of filteredItems) {
+      if (item.item_type === "pr" && item.body) {
+        const refs = extractLinkedIssueNumbers(item.body);
+        if (refs.length > 0) {
+          ids.add(item.id);
+          if (!byProjectAndNumber.has(item.project_id)) byProjectAndNumber.set(item.project_id, new Set());
+          for (const n of refs) byProjectAndNumber.get(item.project_id)!.add(n);
+        }
+      }
+    }
+    // Mark issues that are referenced
+    for (const item of filteredItems) {
+      if (item.item_type === "issue" && item.type_data.kind !== "note") {
+        const nums = byProjectAndNumber.get(item.project_id);
+        if (nums?.has(item.type_data.external_id)) ids.add(item.id);
+      }
+    }
+    return ids;
+  }, [filteredItems]);
 
   const selectedIdSet = useMemo(
     () => new Set(selectedItemIds),
@@ -863,6 +889,7 @@ export function InboxList() {
                           onDelete={() => deleteItem(item.id)}
                           onRestore={() => restoreItem(item.id)}
                           isDismissedView={showDismissedOnly}
+                          hasLinkedItems={linkedItemIds.has(item.id)}
                         />
                       );
                     })}
@@ -918,6 +945,7 @@ export function InboxList() {
                     onDelete={() => deleteItem(item.id)}
                     onRestore={() => restoreItem(item.id)}
                     isDismissedView={showDismissedOnly}
+                    hasLinkedItems={linkedItemIds.has(item.id)}
                   />
                 );
               })
