@@ -20,6 +20,8 @@ interface NoteState {
   selectedNoteIds: string[];
   toggleNoteSelection: (id: string) => void;
   clearNoteSelection: () => void;
+  lastClickedNoteIndex: number | null;
+  setLastClickedNoteIndex: (index: number | null) => void;
 
   // Per-note loading states
   isGenerating: Record<string, boolean>;
@@ -50,7 +52,9 @@ export const useDraftIssueStore = create<NoteState>((set) => ({
         ? state.selectedNoteIds.filter((i) => i !== id)
         : [...state.selectedNoteIds, id],
     })),
-  clearNoteSelection: () => set({ selectedNoteIds: [] }),
+  clearNoteSelection: () => set({ selectedNoteIds: [], lastClickedNoteIndex: null }),
+  lastClickedNoteIndex: null,
+  setLastClickedNoteIndex: (index) => set({ lastClickedNoteIndex: index }),
 
   isGenerating: {},
   setIsGenerating: (id, value) =>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, forwardRef } from "react";
 import type { Item } from "@/types";
 import { formatTimeAgo } from "@/lib/utils";
 import { getLabelColor } from "@/lib/labels";
@@ -53,7 +53,8 @@ interface InboxItemProps {
   isAnalyzing?: boolean;
   hasAnalysis?: boolean;
   isChecked: boolean;
-  onToggleSelect: () => void;
+  isFocused?: boolean;
+  onToggleSelect: (e: React.MouseEvent) => void;
   onClick: () => void;
   onToggleStar: () => void;
   onMarkUnread: () => void;
@@ -62,7 +63,7 @@ interface InboxItemProps {
   isDismissedView?: boolean;
 }
 
-export function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView }: InboxItemProps) {
+export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView }, ref) {
   const [bodyExpanded, setBodyExpanded] = useState(false);
   const timeAgo = formatTimeAgo(item.updated_at);
   const strippedBody = item.body ? stripMarkdown(item.body) : "";
@@ -71,8 +72,9 @@ export function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, h
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <button
-          className={`block w-full border-b px-4 py-3.5 text-left transition-colors hover:bg-muted/50 ${
-            isSelected ? "bg-muted border-l-2 border-l-primary" : ""
+          ref={ref as React.Ref<HTMLButtonElement>}
+          className={`block w-full border-l-2 border-b px-4 py-3.5 text-left transition-colors hover:bg-muted/50 ${
+            isSelected ? "bg-muted border-l-primary" : isFocused ? "border-l-primary/30" : "border-l-transparent"
           } ${item.is_read && !isSelected ? "text-foreground/70" : ""}`}
           onClick={onClick}
         >
@@ -81,7 +83,7 @@ export function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, h
               checked={isChecked}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleSelect();
+                onToggleSelect(e as unknown as React.MouseEvent);
               }}
               className="shrink-0"
             />
@@ -200,5 +202,5 @@ export function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, h
       </ContextMenuContent>
     </ContextMenu>
   );
-}
+});
 

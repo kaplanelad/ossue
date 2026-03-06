@@ -150,6 +150,7 @@ export function useItems() {
       if (showDismissedOnly) {
         const response = await api.listDismissedItems({ itemType: typeFilter, searchQuery: search });
         setItems(response.items);
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts });
       } else {
         const [response, analyzedIds] = await Promise.all([
           api.listItems({ itemType: typeFilter, searchQuery: search }),
@@ -157,6 +158,7 @@ export function useItems() {
         ]);
         setItems(response.items);
         setAnalyzedItemIds(analyzedIds);
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts });
       }
     } catch (err) {
       toast.error("Failed to fetch items", { description: errorMessage(err) });
@@ -207,6 +209,8 @@ export function useItems() {
       removeItem(id);
       try {
         await api.deleteItem(id);
+        // Refresh to update dismissed counts
+        await useItemStore.getState().fetchInbox();
       } catch (err) {
         if (item) useAppStore.getState().mergeItems([item]);
         toast.error("Failed to delete item", {
@@ -223,6 +227,8 @@ export function useItems() {
       removeItem(id);
       try {
         await api.restoreItem(id);
+        // Refresh to update dismissed counts
+        await useItemStore.getState().fetchInbox();
       } catch (err) {
         toast.error("Failed to restore item", {
           description: errorMessage(err),

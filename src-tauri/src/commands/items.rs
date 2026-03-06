@@ -80,6 +80,7 @@ pub struct ItemPageResponse {
     pub items: Vec<ItemResponse>,
     pub next_cursor: Option<String>,
     pub has_more: bool,
+    pub dismissed_counts: Vec<ossue_core::queries::DismissedCount>,
 }
 
 #[tauri::command]
@@ -95,30 +96,45 @@ pub async fn list_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing items");
     let db = state.get_db().await?;
 
-    let page = ossue_core::queries::list_items(
-        &db,
-        ossue_core::queries::ListItemsParams {
-            project_id,
-            item_type,
-            starred_only: starred_only.unwrap_or(false),
-            search_query,
-            cursor,
-            page_size: page_size.unwrap_or(50),
-            dismissed: false,
+    let (page, dismissed_counts) = tokio::try_join!(
+        async {
+            ossue_core::queries::list_items(
+                &db,
+                ossue_core::queries::ListItemsParams {
+                    project_id,
+                    item_type,
+                    starred_only: starred_only.unwrap_or(false),
+                    search_query,
+                    cursor,
+                    page_size: page_size.unwrap_or(50),
+                    dismissed: false,
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to query items from database");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })
         },
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to query items from database");
-        CommandError::Internal {
-            message: e.to_string(),
+        async {
+            ossue_core::queries::count_dismissed_grouped(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count dismissed items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
-    })?;
+    )?;
 
     Ok(ItemPageResponse {
         items: page.items.into_iter().map(ItemResponse::from).collect(),
         next_cursor: page.next_cursor,
         has_more: page.has_more,
+        dismissed_counts,
     })
 }
 
@@ -273,30 +289,45 @@ pub async fn list_dismissed_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing dismissed items");
     let db = state.get_db().await?;
 
-    let page = ossue_core::queries::list_items(
-        &db,
-        ossue_core::queries::ListItemsParams {
-            project_id,
-            item_type,
-            starred_only: false,
-            search_query,
-            cursor,
-            page_size: page_size.unwrap_or(50),
-            dismissed: true,
+    let (page, dismissed_counts) = tokio::try_join!(
+        async {
+            ossue_core::queries::list_items(
+                &db,
+                ossue_core::queries::ListItemsParams {
+                    project_id,
+                    item_type,
+                    starred_only: false,
+                    search_query,
+                    cursor,
+                    page_size: page_size.unwrap_or(50),
+                    dismissed: true,
+                },
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to query dismissed items from database");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })
         },
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to query dismissed items from database");
-        CommandError::Internal {
-            message: e.to_string(),
+        async {
+            ossue_core::queries::count_dismissed_grouped(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count dismissed items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
-    })?;
+    )?;
 
     Ok(ItemPageResponse {
         items: page.items.into_iter().map(ItemResponse::from).collect(),
         next_cursor: page.next_cursor,
         has_more: page.has_more,
+        dismissed_counts,
     })
 }
 

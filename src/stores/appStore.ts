@@ -110,6 +110,7 @@ interface AppState {
   // Dismissed filter
   showDismissedOnly: boolean;
   setShowDismissedOnly: (show: boolean) => void;
+  dismissedCounts: import("@/types").DismissedCount[];
 
   // Refresh interval
   refreshInterval: number;
@@ -207,6 +208,7 @@ function getCompositeState(): AppState {
     // Dismissed
     showDismissedOnly: item.showDismissedOnly,
     setShowDismissedOnly: item.setShowDismissedOnly,
+    dismissedCounts: item.dismissedCounts,
 
     // UI
     refreshInterval: ui.refreshInterval,
