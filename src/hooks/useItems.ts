@@ -157,7 +157,7 @@ export function useItems() {
           api.getDraftIssueCount(),
         ]);
         setItems(response.items);
-        useItemStore.setState({ dismissedCounts: response.dismissed_counts, draftNoteCount: noteCount });
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, draftNoteCount: noteCount });
       } else {
         const [response, analyzedIds, noteCount] = await Promise.all([
           api.listItems({ itemType: typeFilter, searchQuery: search }),
@@ -166,7 +166,7 @@ export function useItems() {
         ]);
         setItems(response.items);
         setAnalyzedItemIds(analyzedIds);
-        useItemStore.setState({ dismissedCounts: response.dismissed_counts, draftNoteCount: noteCount });
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, draftNoteCount: noteCount });
       }
     } catch (err) {
       toast.error("Failed to fetch items", { description: errorMessage(err) });

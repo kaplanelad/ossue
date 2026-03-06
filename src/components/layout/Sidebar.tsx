@@ -71,7 +71,7 @@ const typeFilters: { value: ItemTypeFilter; label: string; icon: React.ReactNode
 
 export function Sidebar() {
   const { projects, selectedProjectIds, toggleProjectSelection, clearProjectSelection, fetchProjects } = useProjects();
-  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts, draftNoteCount } = useAppStore();
+  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts, itemTypeCounts, draftNoteCount } = useAppStore();
   const [version, setVersion] = useState("");
   // Items filtered by project + type filter (for "Show Only" counters)
   const baseFilteredItems = useMemo(() => {
@@ -87,13 +87,18 @@ export function Sidebar() {
   }, [items, selectedProjectIds, itemTypeFilter]);
 
   const noteCount = draftNoteCount;
-  const projectFilteredItems = useMemo(() => {
-    if (selectedProjectIds.length === 0) return items;
-    const selected = new Set(selectedProjectIds);
-    return items.filter((i) => selected.has(i.project_id));
-  }, [items, selectedProjectIds]);
-  const issueCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "issue").length, [projectFilteredItems]);
-  const prCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "pr").length, [projectFilteredItems]);
+  // Use backend-provided counts (independent of current type filter)
+  const typeCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of itemTypeCounts) {
+      map.set(c.item_type, c.count);
+    }
+    return map;
+  }, [itemTypeCounts]);
+  const issueCount = typeCountMap.get("issue") ?? 0;
+  const prCount = typeCountMap.get("pr") ?? 0;
+  const discussionCount = typeCountMap.get("discussion") ?? 0;
+  const allCount = (typeCountMap.get("issue") ?? 0) + (typeCountMap.get("pr") ?? 0) + (typeCountMap.get("discussion") ?? 0) + noteCount;
   const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
   const analyzedCount = useMemo(() => {
     const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));
@@ -141,6 +146,11 @@ export function Sidebar() {
             >
               {f.icon}
               {f.label}
+              {f.value === "all" && allCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {allCount}
+                </span>
+              )}
               {f.value === "note" && noteCount > 0 && (
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/15 dark:bg-amber-400/15 px-1 text-[10px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
                   {noteCount}
@@ -154,6 +164,11 @@ export function Sidebar() {
               {f.value === "pr" && prCount > 0 && (
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500/15 dark:bg-blue-400/15 px-1 text-[10px] font-semibold tabular-nums text-blue-600 dark:text-blue-400">
                   {prCount}
+                </span>
+              )}
+              {f.value === "discussion" && discussionCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500/15 dark:bg-green-400/15 px-1 text-[10px] font-semibold tabular-nums text-green-600 dark:text-green-400">
+                  {discussionCount}
                 </span>
               )}
             </Button>

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi, getDraftIssueCount } from "@/lib/tauri";
-import type { Item, ItemTypeFilter, DismissedCount } from "@/types";
+import type { Item, ItemTypeFilter, DismissedCount, ItemTypeCount } from "@/types";
 import { useProjectStore } from "./projectStore";
 
 interface ItemState {
@@ -39,6 +39,9 @@ interface ItemState {
 
   // Dismissed counts (per project+type)
   dismissedCounts: DismissedCount[];
+
+  // Item type counts (independent of type filter)
+  itemTypeCounts: ItemTypeCount[];
 
   // Persistent note count (independent of type filter)
   draftNoteCount: number;
@@ -128,6 +131,8 @@ export const useItemStore = create<ItemState>((set) => ({
 
   dismissedCounts: [],
 
+  itemTypeCounts: [],
+
   draftNoteCount: 0,
 
   nextCursor: null,
@@ -168,6 +173,7 @@ export const useItemStore = create<ItemState>((set) => ({
         nextCursor: response.next_cursor,
         hasMore: response.has_more,
         dismissedCounts: response.dismissed_counts,
+        itemTypeCounts: response.item_type_counts,
         draftNoteCount: noteCount,
       });
     } catch (e) {
@@ -208,6 +214,7 @@ export const useItemStore = create<ItemState>((set) => ({
         nextCursor: response.next_cursor,
         hasMore: response.has_more,
         dismissedCounts: response.dismissed_counts,
+        itemTypeCounts: response.item_type_counts,
         isLoadingMore: false,
       }));
     } catch (e) {

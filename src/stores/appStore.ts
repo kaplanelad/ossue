@@ -111,6 +111,7 @@ interface AppState {
   showDismissedOnly: boolean;
   setShowDismissedOnly: (show: boolean) => void;
   dismissedCounts: import("@/types").DismissedCount[];
+  itemTypeCounts: import("@/types").ItemTypeCount[];
 
   // Persistent note count
   draftNoteCount: number;
@@ -212,6 +213,7 @@ function getCompositeState(): AppState {
     showDismissedOnly: item.showDismissedOnly,
     setShowDismissedOnly: item.setShowDismissedOnly,
     dismissedCounts: item.dismissedCounts,
+    itemTypeCounts: item.itemTypeCounts,
 
     // Note count
     draftNoteCount: item.draftNoteCount,

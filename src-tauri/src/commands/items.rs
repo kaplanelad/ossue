@@ -81,6 +81,7 @@ pub struct ItemPageResponse {
     pub next_cursor: Option<String>,
     pub has_more: bool,
     pub dismissed_counts: Vec<ossue_core::queries::DismissedCount>,
+    pub item_type_counts: Vec<ossue_core::queries::ItemTypeCount>,
 }
 
 #[tauri::command]
@@ -96,7 +97,7 @@ pub async fn list_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts) = tokio::try_join!(
+    let (page, dismissed_counts, item_type_counts) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
@@ -127,6 +128,16 @@ pub async fn list_items(
                         message: e.to_string(),
                     }
                 })
+        },
+        async {
+            ossue_core::queries::count_pending_by_type(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count items by type");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
     )?;
 
@@ -135,6 +146,7 @@ pub async fn list_items(
         next_cursor: page.next_cursor,
         has_more: page.has_more,
         dismissed_counts,
+        item_type_counts,
     })
 }
 
@@ -289,7 +301,7 @@ pub async fn list_dismissed_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing dismissed items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts) = tokio::try_join!(
+    let (page, dismissed_counts, item_type_counts) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
@@ -320,6 +332,16 @@ pub async fn list_dismissed_items(
                         message: e.to_string(),
                     }
                 })
+        },
+        async {
+            ossue_core::queries::count_pending_by_type(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count items by type");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
     )?;
 
@@ -328,6 +350,7 @@ pub async fn list_dismissed_items(
         next_cursor: page.next_cursor,
         has_more: page.has_more,
         dismissed_counts,
+        item_type_counts,
     })
 }
 

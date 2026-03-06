@@ -61,9 +61,15 @@ export interface DismissedCount {
   count: number;
 }
 
+export interface ItemTypeCount {
+  item_type: string;
+  count: number;
+}
+
 export interface ItemPageResponse {
   items: Item[];
   next_cursor: string | null;
   has_more: boolean;
   dismissed_counts: DismissedCount[];
+  item_type_counts: ItemTypeCount[];
 }

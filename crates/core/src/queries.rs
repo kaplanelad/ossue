@@ -185,6 +185,44 @@ pub struct DismissedCount {
     pub count: u64,
 }
 
+/// Count of pending (non-dismissed) items grouped by item_type.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ItemTypeCount {
+    pub item_type: String,
+    pub count: u64,
+}
+
+/// Count pending items grouped by item_type (ignoring type filter).
+pub async fn count_pending_by_type(
+    db: &DatabaseConnection,
+) -> Result<Vec<ItemTypeCount>, sea_orm::DbErr> {
+    use sea_orm::FromQueryResult;
+
+    #[derive(Debug, FromQueryResult)]
+    struct Row {
+        item_type: String,
+        count: i64,
+    }
+
+    let rows = item::Entity::find()
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Pending))
+        .select_only()
+        .column(item::Column::ItemType)
+        .column_as(item::Column::Id.count(), "count")
+        .group_by(item::Column::ItemType)
+        .into_model::<Row>()
+        .all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ItemTypeCount {
+            item_type: r.item_type,
+            count: r.count as u64,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
