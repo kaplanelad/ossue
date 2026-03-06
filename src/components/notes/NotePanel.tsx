@@ -190,7 +190,7 @@ function ProcessingView() {
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
       <p className="text-sm text-muted-foreground">Generating issue...</p>
-      <p className="text-xs text-muted-foreground/60">AI is structuring your note</p>
+      <p className="text-xs text-muted-foreground/60">Ossue is paraphrasing your note</p>
     </div>
   );
 }
