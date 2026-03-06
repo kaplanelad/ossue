@@ -71,7 +71,7 @@ const typeFilters: { value: ItemTypeFilter; label: string; icon: React.ReactNode
 
 export function Sidebar() {
   const { projects, selectedProjectIds, toggleProjectSelection, clearProjectSelection, fetchProjects } = useProjects();
-  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts } = useAppStore();
+  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts, draftNoteCount } = useAppStore();
   const [version, setVersion] = useState("");
   // Items filtered by project + type filter (for "Show Only" counters)
   const baseFilteredItems = useMemo(() => {
@@ -86,7 +86,7 @@ export function Sidebar() {
     return result;
   }, [items, selectedProjectIds, itemTypeFilter]);
 
-  const noteCount = useMemo(() => items.filter((i) => i.item_type === "note").length, [items]);
+  const noteCount = draftNoteCount;
   const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
   const analyzedCount = useMemo(() => {
     const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));

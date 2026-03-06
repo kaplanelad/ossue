@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi } from "@/lib/tauri";
+import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi, getDraftIssueCount } from "@/lib/tauri";
 import type { Item, ItemTypeFilter, DismissedCount } from "@/types";
 import { useProjectStore } from "./projectStore";
 
@@ -39,6 +39,9 @@ interface ItemState {
 
   // Dismissed counts (per project+type)
   dismissedCounts: DismissedCount[];
+
+  // Persistent note count (independent of type filter)
+  draftNoteCount: number;
 
   // Pagination
   nextCursor: string | null;
@@ -125,6 +128,8 @@ export const useItemStore = create<ItemState>((set) => ({
 
   dismissedCounts: [],
 
+  draftNoteCount: 0,
+
   nextCursor: null,
   hasMore: false,
   isLoadingMore: false,
@@ -141,25 +146,29 @@ export const useItemStore = create<ItemState>((set) => ({
       const starredOnly = filters?.starredOnly ?? itemState.showStarredOnly;
 
       const searchQuery = itemState.searchQuery.trim() || undefined;
-      const response = itemState.showDismissedOnly
-        ? await listDismissedItemsApi({
-            projectId: projectIds?.[0],
-            itemType,
-            searchQuery,
-            pageSize: 50,
-          })
-        : await listItemsApi({
-            projectId: projectIds?.[0],
-            itemType,
-            starredOnly: starredOnly || undefined,
-            searchQuery,
-            pageSize: 50,
-          });
+      const [response, noteCount] = await Promise.all([
+        itemState.showDismissedOnly
+          ? listDismissedItemsApi({
+              projectId: projectIds?.[0],
+              itemType,
+              searchQuery,
+              pageSize: 50,
+            })
+          : listItemsApi({
+              projectId: projectIds?.[0],
+              itemType,
+              starredOnly: starredOnly || undefined,
+              searchQuery,
+              pageSize: 50,
+            }),
+        getDraftIssueCount(),
+      ]);
       set({
         items: response.items,
         nextCursor: response.next_cursor,
         hasMore: response.has_more,
         dismissedCounts: response.dismissed_counts,
+        draftNoteCount: noteCount,
       });
     } catch (e) {
       console.error("Failed to fetch inbox:", e);
