@@ -61,6 +61,14 @@ Download the latest release for your platform from the [Releases](https://github
 | Windows  | `.msi`   |
 | Linux    | `.AppImage` / `.deb` |
 
+#### macOS Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kaplanelad/ossue/main/install.sh | bash
+```
+
+This downloads the correct `.dmg` for your architecture, installs the app, and handles macOS Gatekeeper automatically.
+
 ### Quick Setup
 
 1. **Connect GitHub** — Link your GitHub account
