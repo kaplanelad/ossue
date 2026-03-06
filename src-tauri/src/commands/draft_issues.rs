@@ -748,7 +748,11 @@ pub async fn submit_draft_to_provider(
         } else {
             Some(draft.body.clone())
         },
-        labels: if labels.is_empty() { None } else { Some(labels) },
+        labels: if labels.is_empty() {
+            None
+        } else {
+            Some(labels)
+        },
     };
 
     // 5. Call provider
