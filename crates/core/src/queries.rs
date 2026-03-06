@@ -66,9 +66,9 @@ pub async fn list_items(
                 .add(item::Column::Title.like(&pattern))
                 .add(item::Column::Body.like(&pattern))
                 // Search author and labels in type_data JSON
-                .add(item::Column::TypeData.like(format!("%\"author\":\"%{}%", q)))
-                .add(item::Column::TypeData.like(format!("%\"labels\":%\"%{}%", q)))
-                .add(item::Column::TypeData.like(format!("%\"pr_branch\":\"%{}%", q)));
+                .add(item::Column::TypeData.like(format!("%\"author\":\"%{}%\"%", q)))
+                .add(item::Column::TypeData.like(format!("%\"labels\":%\"%{}%\"%", q)))
+                .add(item::Column::TypeData.like(format!("%\"pr_branch\":\"%{}%\"%", q)));
             // If the query looks like a number, also match external_id in type_data JSON
             if q.trim_start_matches('#').parse::<i64>().is_ok() {
                 let num_str = q.trim_start_matches('#');
