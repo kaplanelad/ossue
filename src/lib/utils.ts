@@ -6,7 +6,17 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function errorMessage(err: unknown): string {
-  if (typeof err === "string") return err;
+  if (typeof err === "string") {
+    // Tauri may send JSON-serialized CommandError as a string
+    try {
+      const parsed = JSON.parse(err);
+      if (typeof parsed.message === "string") return parsed.message;
+      if (typeof parsed.kind === "string") return parsed.kind;
+    } catch {
+      // Not JSON, return as-is
+    }
+    return err;
+  }
   if (err && typeof err === "object") {
     const obj = err as Record<string, unknown>;
     if (typeof obj.message === "string") return obj.message;

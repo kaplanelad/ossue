@@ -1009,14 +1009,36 @@ impl IssueCreator for GitHubClient {
 
         if !status.is_success() {
             tracing::error!(status = %status, owner = %owner, repo = %repo, body = %resp_body, "GitHub API error creating issue");
+
+            // Try to extract the error message from GitHub's JSON response
+            let api_message = serde_json::from_str::<serde_json::Value>(&resp_body)
+                .ok()
+                .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(String::from));
+
             return Err(match status.as_u16() {
-                403 => format!(
-                    "Permission denied: your token doesn't have write access to {owner}/{repo}. \
-                     Please check that your token has the 'repo' scope (or 'Issues: Read and write' for fine-grained tokens)."
-                ),
+                403 => {
+                    let detail = api_message.as_deref().unwrap_or("");
+                    if detail.contains("Resource not accessible by personal access token") {
+                        format!(
+                            "Permission denied: classic personal access tokens may be restricted by this organization. \
+                             Try using a fine-grained token with 'Issues: Read and write' permission, \
+                             or check the organization's token policy in Settings > Third-party access."
+                        )
+                    } else {
+                        format!(
+                            "Permission denied: your token doesn't have write access to {owner}/{repo}. \
+                             Please check that your token has the 'repo' scope (or 'Issues: Read and write' for fine-grained tokens). \
+                             GitHub: {detail}"
+                        )
+                    }
+                },
                 401 => "Authentication failed: your GitHub token is invalid or expired. Please update it in Settings.".to_string(),
                 404 => format!("Repository {owner}/{repo} not found, or your token doesn't have access to it."),
-                422 => format!("GitHub rejected the issue: {resp_body}"),
+                410 => format!("Issues are disabled for {owner}/{repo}. Enable them in the repository settings."),
+                422 => {
+                    let detail = api_message.unwrap_or_else(|| resp_body.clone());
+                    format!("GitHub rejected the issue: {detail}")
+                },
                 _ => format!("GitHub API error (HTTP {status}): {resp_body}"),
             });
         }
