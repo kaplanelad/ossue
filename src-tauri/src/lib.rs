@@ -193,6 +193,8 @@ pub fn run() {
             commands::logging::set_log_level,
             commands::logging::get_log_entries,
             commands::logging::clear_logs,
+            // Updater
+            commands::updater::check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

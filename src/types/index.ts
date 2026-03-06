@@ -6,3 +6,4 @@ export * from './draft';
 export * from './settings';
 export * from './sync';
 export * from './ui';
+export * from './updater';

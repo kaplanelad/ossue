@@ -9,3 +9,4 @@ pub mod logging;
 pub mod project_notes;
 pub mod repos;
 pub mod settings;
+pub mod updater;
