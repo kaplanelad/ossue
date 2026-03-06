@@ -1007,6 +1007,95 @@ impl GitHubClient {
         tracing::debug!(count = events.len(), owner = %owner, repo = %repo, issue_number = issue_number, "Fetched issue timeline");
         Ok(events)
     }
+    pub async fn post_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: i32,
+        comment: &str,
+    ) -> Result<()> {
+        tracing::debug!(owner = %owner, repo = %repo, issue_number = issue_number, "Posting comment");
+        let response = self
+            .client
+            .post(format!(
+                "{}/repos/{owner}/{repo}/issues/{issue_number}/comments", self.base_url
+            ))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "ossue")
+            .json(&serde_json::json!({ "body": comment }))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, owner = %owner, repo = %repo, issue_number = issue_number, "GitHub API network error posting comment");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), owner = %owner, repo = %repo, issue_number = issue_number, "GitHub API error posting comment");
+            })?;
+
+        tracing::debug!(owner = %owner, repo = %repo, issue_number = issue_number, "Posted comment");
+        Ok(())
+    }
+
+    pub async fn merge_pull_request(&self, owner: &str, repo: &str, pr_number: i32) -> Result<()> {
+        tracing::debug!(owner = %owner, repo = %repo, pr_number = pr_number, "Merging pull request");
+        let response = self
+            .client
+            .put(format!(
+                "{}/repos/{owner}/{repo}/pulls/{pr_number}/merge", self.base_url
+            ))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "ossue")
+            .json(&serde_json::json!({ "merge_method": "merge" }))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, owner = %owner, repo = %repo, pr_number = pr_number, "GitHub API network error merging pull request");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), owner = %owner, repo = %repo, pr_number = pr_number, "GitHub API error merging pull request");
+            })?;
+
+        tracing::debug!(owner = %owner, repo = %repo, pr_number = pr_number, "Merged pull request");
+        Ok(())
+    }
+
+    pub async fn close_issue(&self, owner: &str, repo: &str, issue_number: i32) -> Result<()> {
+        tracing::debug!(owner = %owner, repo = %repo, issue_number = issue_number, "Closing issue");
+        let response = self
+            .client
+            .patch(format!(
+                "{}/repos/{owner}/{repo}/issues/{issue_number}", self.base_url
+            ))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "ossue")
+            .json(&serde_json::json!({ "state": "closed" }))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, owner = %owner, repo = %repo, issue_number = issue_number, "GitHub API network error closing issue");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), owner = %owner, repo = %repo, issue_number = issue_number, "GitHub API error closing issue");
+            })?;
+
+        tracing::debug!(owner = %owner, repo = %repo, issue_number = issue_number, "Closed issue");
+        Ok(())
+    }
 }
 
 #[async_trait]

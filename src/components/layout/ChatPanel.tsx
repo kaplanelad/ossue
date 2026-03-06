@@ -85,6 +85,9 @@ export function ChatPanel({ width }: ChatPanelProps) {
         isLoading={isLoading}
         analysisStatus={analysisStatus}
         onAnalyzeAction={analyzeWithAction}
+        itemId={selectedItem.id}
+        itemType={selectedItem.item_type}
+        onSendFollowUp={sendMessage}
       />
 
       {/* Input */}

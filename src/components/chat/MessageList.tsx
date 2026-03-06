@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ChatMessage, AnalysisAction } from "@/types";
 import { AIMessage } from "./AIMessage";
 import { UserMessage } from "./UserMessage";
+import { AnalyzeActions } from "./AnalyzeActions";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
@@ -13,6 +14,9 @@ interface MessageListProps {
   isLoading: boolean;
   analysisStatus: string | null;
   onAnalyzeAction: (action: AnalysisAction) => void;
+  itemId: string;
+  itemType: "issue" | "pr" | "discussion" | "note";
+  onSendFollowUp: (message: string) => void;
 }
 
 export function MessageList({
@@ -22,12 +26,21 @@ export function MessageList({
   isLoading,
   analysisStatus,
   onAnalyzeAction,
+  itemId,
+  itemType,
+  onSendFollowUp,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const isAnalyzing = (isLoading && !isStreaming) || (isStreaming && !streamingContent);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "instant" });
   }, [messages, streamingContent]);
+
+  // Show action buttons after an Analyze response — detect by the "Analyze" user message label
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  const wasAnalyze = lastUserMsg?.content === "Analyze";
+  const showActions = wasAnalyze && !!lastAssistantMsg && !isStreaming && !isLoading;
 
   if (messages.length === 0 && !isStreaming && !isLoading) {
     return (
@@ -74,6 +87,17 @@ export function MessageList({
             <div className="flex items-center text-sm text-muted-foreground">
               {analysisStatus ?? "Analyzing..."}
             </div>
+          </div>
+        )}
+        {showActions && (
+          <div className="pl-9">
+            <AnalyzeActions
+              itemId={itemId}
+              itemType={itemType}
+              lastMessageContent={lastAssistantMsg!.content}
+              onSendFollowUp={onSendFollowUp}
+              disabled={isLoading || isStreaming}
+            />
           </div>
         )}
         <div ref={bottomRef} />

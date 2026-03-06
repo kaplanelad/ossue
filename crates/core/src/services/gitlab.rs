@@ -625,6 +625,115 @@ impl GitLabClient {
         );
         Ok(commits)
     }
+    pub async fn post_comment(
+        &self,
+        project_id: i64,
+        item_iid: i32,
+        item_type: &str,
+        comment: &str,
+    ) -> Result<()> {
+        let endpoint = match item_type {
+            "pr" => "merge_requests",
+            _ => "issues",
+        };
+        tracing::debug!(project_id = project_id, item_iid = item_iid, item_type = %item_type, "Posting comment");
+        let response = self
+            .client
+            .post(format!(
+                "{}/api/v4/projects/{project_id}/{endpoint}/{item_iid}/notes",
+                self.base_url
+            ))
+            .header("PRIVATE-TOKEN", &self.token)
+            .json(&serde_json::json!({ "body": comment }))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, project_id = project_id, item_iid = item_iid, "GitLab API network error posting comment");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), project_id = project_id, item_iid = item_iid, "GitLab API error posting comment");
+            })?;
+
+        tracing::debug!(
+            project_id = project_id,
+            item_iid = item_iid,
+            "Posted comment"
+        );
+        Ok(())
+    }
+
+    pub async fn merge_merge_request(&self, project_id: i64, mr_iid: i32) -> Result<()> {
+        tracing::debug!(
+            project_id = project_id,
+            mr_iid = mr_iid,
+            "Merging merge request"
+        );
+        let response = self
+            .client
+            .put(format!(
+                "{}/api/v4/projects/{project_id}/merge_requests/{mr_iid}/merge",
+                self.base_url
+            ))
+            .header("PRIVATE-TOKEN", &self.token)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, project_id = project_id, mr_iid = mr_iid, "GitLab API network error merging merge request");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), project_id = project_id, mr_iid = mr_iid, "GitLab API error merging merge request");
+            })?;
+
+        tracing::debug!(
+            project_id = project_id,
+            mr_iid = mr_iid,
+            "Merged merge request"
+        );
+        Ok(())
+    }
+
+    pub async fn close_issue(&self, project_id: i64, issue_iid: i32) -> Result<()> {
+        tracing::debug!(
+            project_id = project_id,
+            issue_iid = issue_iid,
+            "Closing issue"
+        );
+        let response = self
+            .client
+            .put(format!(
+                "{}/api/v4/projects/{project_id}/issues/{issue_iid}",
+                self.base_url
+            ))
+            .header("PRIVATE-TOKEN", &self.token)
+            .json(&serde_json::json!({ "state_event": "close" }))
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, project_id = project_id, issue_iid = issue_iid, "GitLab API network error closing issue");
+                e
+            })?;
+
+        response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), project_id = project_id, issue_iid = issue_iid, "GitLab API error closing issue");
+            })?;
+
+        tracing::debug!(
+            project_id = project_id,
+            issue_iid = issue_iid,
+            "Closed issue"
+        );
+        Ok(())
+    }
 }
 
 #[async_trait]

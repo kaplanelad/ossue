@@ -390,21 +390,71 @@ impl ContextService {
         match action {
             ActionType::Analyze => match item_type {
                 ItemType::PullRequest => {
-                    "You are an expert code reviewer and maintainer's assistant. \
-                         Analyze this pull request: summarize the changes, assess impact \
-                         and code quality, and suggest a review comment."
+                    "You are a maintainer's assistant.\n\n\
+                     STRICT RULES — VIOLATING ANY OF THESE IS A FAILURE:\n\
+                     1. Your FIRST line of output MUST be \"## At a Glance\". No text before it. No introduction, no thinking, no meta-commentary, no \"Let me analyze\", no observations about the worktree or context. NOTHING before \"## At a Glance\".\n\
+                     2. Output ONLY the sections defined below. No extra sections like \"Positive Observations\", \"Summary\", \"Overview\", \"Notes\", etc.\n\
+                     3. NEVER reproduce diff code, code blocks, or raw context data. Reference files and lines by name only.\n\
+                     4. Be direct and concise. No filler, no sugar-coating, no \"Great work on...\". State facts.\n\n\
+                     ## At a Glance\n\
+                     **Verdict:** CAN MERGE / NEEDS CHANGES / NEEDS DISCUSSION\n\
+                     **Breaking changes:** Yes — [brief] / None found\n\
+                     **Risk:** Low / Medium / High\n\n\
+                     ## What's Going On\n\
+                     1-3 sentences max. What does this PR do? If there are review comments, what's still open?\n\n\
+                     ## Key Findings\n\
+                     | Severity | File | Line | Finding |\n\
+                     |----------|------|------|---------|\n\
+                     Only real issues. If nothing, write \"No issues found.\" Do NOT pad with minor style nits.\n\n\
+                     ## Action Items\n\
+                     - [ ] What must happen before merge. If nothing, write \"Ready to merge.\"\n\n\
+                     ## Suggested Review Comment\n\
+                     A ready-to-paste GitHub review comment. Direct, concise, actionable. No compliments or pleasantries — just what needs to happen."
                         .to_string()
                 }
                 ItemType::Discussion => {
-                    "You are a maintainer's assistant. Analyze this discussion and give \
-                         the maintainer everything they need to take action: what it's about, \
-                         whether maintainer input is needed, and a suggested response."
+                    "You are a maintainer's assistant.\n\n\
+                     STRICT RULES — VIOLATING ANY OF THESE IS A FAILURE:\n\
+                     1. Your FIRST line of output MUST be \"## At a Glance\". No text before it. No introduction, no thinking, no meta-commentary. NOTHING before \"## At a Glance\".\n\
+                     2. Output ONLY the sections defined below. No extra sections.\n\
+                     3. NEVER reproduce raw context data.\n\
+                     4. Be direct and concise. No filler.\n\n\
+                     ## At a Glance\n\
+                     **Topic:** Configuration | Bug help | Feature idea | General\n\
+                     **Needs maintainer input:** Yes / No\n\
+                     **Community sentiment:** Positive / Neutral / Frustrated\n\n\
+                     ## What's Going On\n\
+                     1-3 sentences max. What is this really about and where does it stand?\n\n\
+                     ## Key Findings\n\
+                     - The user's actual problem\n\
+                     - Relevant docs, settings, or code pointers\n\
+                     - Should this be converted to an issue?\n\n\
+                     ## Suggested Response\n\
+                     A ready-to-paste comment. Direct, helpful, moves things forward."
                         .to_string()
                 }
-                _ => "You are a maintainer's assistant. Analyze this issue and give \
-                         the maintainer everything they need to take action: what it's about, \
-                         how urgent it is, and a suggested response."
-                    .to_string(),
+                _ => {
+                    "You are a maintainer's assistant.\n\n\
+                     STRICT RULES — VIOLATING ANY OF THESE IS A FAILURE:\n\
+                     1. Your FIRST line of output MUST be \"## At a Glance\". No text before it. No introduction, no thinking, no meta-commentary. NOTHING before \"## At a Glance\".\n\
+                     2. Output ONLY the sections defined below. No extra sections.\n\
+                     3. NEVER reproduce raw context data.\n\
+                     4. Be direct and concise. No filler.\n\n\
+                     ## At a Glance\n\
+                     **Type:** Bug report | Feature request | Question | Support\n\
+                     **Priority:** Critical / High / Medium / Low\n\
+                     **Action:** Response needed / Can close / Needs more info\n\n\
+                     ## What's Going On\n\
+                     1-3 sentences max. What is this really about? If there are comments, what was tried or left unresolved?\n\n\
+                     ## Key Findings\n\
+                     - Is this a duplicate?\n\
+                     - Does existing docs cover this?\n\
+                     - What info is missing?\n\
+                     - Recommended labels\n\n\
+                     ## Suggested Response\n\
+                     A ready-to-paste comment. Direct, helpful, moves things forward."
+                        .to_string()
+                }
             },
             ActionType::DraftResponse => match item_type {
                 ItemType::Issue => "You are an experienced open source maintainer drafting a \
@@ -437,11 +487,13 @@ impl ContextService {
     ) -> String {
         let mut sections: Vec<String> = Vec::new();
 
-        // 1. Action-specific instructions
-        sections.push(format!(
-            "## Action\n{}",
-            Self::action_instructions(action, &context.item_type)
-        ));
+        // 1. Action-specific instructions (only for non-Analyze — Analyze format is in the system prompt)
+        if *action != ActionType::Analyze {
+            sections.push(format!(
+                "## Action\n{}",
+                Self::action_instructions(action, &context.item_type)
+            ));
+        }
 
         // 2. Custom instructions
         if let Some(ref instructions) = context.custom_instructions {
@@ -479,12 +531,13 @@ impl ContextService {
             ));
         }
 
-        // 6. CONTRIBUTING.md excerpt
-        if let Some(ref pf) = context.project_files {
-            if let Some(ref contributing) = pf.contributing {
-                // Truncate long files to keep within token budget
-                let excerpt: String = contributing.chars().take(3000).collect();
-                sections.push(format!("## CONTRIBUTING.md\n{}", excerpt));
+        // 6. CONTRIBUTING.md excerpt (only for DraftResponse — not useful for Analyze)
+        if *action == ActionType::DraftResponse {
+            if let Some(ref pf) = context.project_files {
+                if let Some(ref contributing) = pf.contributing {
+                    let excerpt: String = contributing.chars().take(3000).collect();
+                    sections.push(format!("## CONTRIBUTING.md\n{}", excerpt));
+                }
             }
         }
 
@@ -568,59 +621,8 @@ impl ContextService {
     fn action_instructions(action: &ActionType, item_type: &ItemType) -> String {
         match action {
             ActionType::Analyze => {
-                match item_type {
-                    ItemType::PullRequest => {
-                        "Analyze this pull request for a busy maintainer. Structure your response as:\n\n\
-                         ## At a Glance\n\
-                         **Verdict:** CAN MERGE / NEEDS CHANGES / NEEDS DISCUSSION\n\
-                         **Breaking changes:** Yes — [brief] / None found\n\
-                         **Risk:** Low / Medium / High\n\n\
-                         ## What's Going On\n\
-                         Summarize what this PR does and the state of discussion in 1-3 sentences.\n\n\
-                         ## Key Findings\n\
-                         | Severity | File | Line | Finding |\n\
-                         |----------|------|------|---------|\n\
-                         Critical bugs, security issues, performance concerns. Reference specific lines from the diff.\n\n\
-                         ## Action Items\n\
-                         - [ ] Required changes before merge (if any)\n\n\
-                         ## Suggested Review Comment\n\
-                         A ready-to-paste review comment."
-                            .to_string()
-                    }
-                    ItemType::Discussion => {
-                        "Analyze this discussion for a busy maintainer. Structure your response as:\n\n\
-                         ## At a Glance\n\
-                         **Topic:** Configuration | Bug help | Feature idea | General\n\
-                         **Needs maintainer input:** Yes / No\n\
-                         **Community sentiment:** Positive / Neutral / Frustrated\n\n\
-                         ## What's Going On\n\
-                         Summarize the discussion and any back-and-forth in 1-3 sentences. If the thread is long, distill the key points and latest status.\n\n\
-                         ## Key Findings\n\
-                         - User's actual problem (distilled from back-and-forth)\n\
-                         - Relevant docs/settings/code pointers\n\
-                         - Should this be converted to an issue?\n\n\
-                         ## Suggested Response\n\
-                         A ready-to-paste response that is welcoming, clear, and addresses the discussion directly."
-                            .to_string()
-                    }
-                    _ => {
-                        "Analyze this issue for a busy maintainer. Structure your response as:\n\n\
-                         ## At a Glance\n\
-                         **Type:** Bug report | Feature request | Question | Support\n\
-                         **Priority:** Critical / High / Medium / Low\n\
-                         **Action:** Response needed / Can close / Needs more info\n\n\
-                         ## What's Going On\n\
-                         Summarize the issue and any discussion in 1-3 sentences. If the thread is long, distill the key points and latest status.\n\n\
-                         ## Key Findings\n\
-                         - Is this a duplicate of a known issue?\n\
-                         - Does existing documentation cover this?\n\
-                         - What info is missing from the reporter?\n\
-                         - Recommended labels (bug, enhancement, good first issue, etc.)\n\n\
-                         ## Suggested Response\n\
-                         A ready-to-paste response that is welcoming, clear, and addresses the issue directly. If more info is needed, ask specific questions."
-                            .to_string()
-                    }
-                }
+                "Analyze the item below using the output format from your instructions. Fill in every section with real values — do not echo the template."
+                    .to_string()
             }
             ActionType::DraftResponse => {
                 match item_type {
@@ -660,9 +662,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[rstest]
-    #[case(ItemType::Issue, "issue")]
-    #[case(ItemType::Discussion, "discussion")]
-    #[case(ItemType::PullRequest, "code reviewer")]
+    #[case(ItemType::Issue, "response needed")]
+    #[case(ItemType::Discussion, "community sentiment")]
+    #[case(ItemType::PullRequest, "can merge")]
     fn build_system_prompt_analyze_by_item_type(
         #[case] item_type: ItemType,
         #[case] expected_fragment: &str,
@@ -757,10 +759,11 @@ mod tests {
     #[test]
     fn build_action_prompt_includes_all_sections() {
         let ctx = full_context();
+
+        // Analyze: includes everything except CONTRIBUTING.md and Action section
         let prompt =
             ContextService::build_action_prompt(&ActionType::Analyze, &ctx, Some("diff here"));
-
-        assert!(prompt.contains("## Action"));
+        assert!(!prompt.contains("## Action"));
         assert!(prompt.contains("## Custom Instructions"));
         assert!(prompt.contains("Be strict"));
         assert!(prompt.contains("## Review Strictness"));
@@ -769,7 +772,7 @@ mod tests {
         assert!(prompt.contains("security"));
         assert!(prompt.contains("performance"));
         assert!(prompt.contains("## Project Notes & Context"));
-        assert!(prompt.contains("## CONTRIBUTING.md"));
+        assert!(!prompt.contains("## CONTRIBUTING.md"));
         assert!(prompt.contains("## Item Details"));
         assert!(prompt.contains("Test Title"));
         assert!(prompt.contains("## Description"));
@@ -781,6 +784,14 @@ mod tests {
         assert!(prompt.contains("@reviewer"));
         assert!(prompt.contains("## Linked Issues"));
         assert!(prompt.contains("#10"));
+
+        // DraftResponse: includes CONTRIBUTING.md
+        let prompt_dr = ContextService::build_action_prompt(
+            &ActionType::DraftResponse,
+            &ctx,
+            Some("diff here"),
+        );
+        assert!(prompt_dr.contains("## CONTRIBUTING.md"));
     }
 
     #[test]
@@ -788,7 +799,7 @@ mod tests {
         let ctx = minimal_context();
         let prompt = ContextService::build_action_prompt(&ActionType::Analyze, &ctx, None);
 
-        assert!(prompt.contains("## Action"));
+        assert!(!prompt.contains("## Action"));
         assert!(prompt.contains("## Item Details"));
         // These should NOT appear
         assert!(!prompt.contains("## Custom Instructions"));
@@ -814,7 +825,7 @@ mod tests {
             readme_excerpt: None,
         });
 
-        let prompt = ContextService::build_action_prompt(&ActionType::Analyze, &ctx, None);
+        let prompt = ContextService::build_action_prompt(&ActionType::DraftResponse, &ctx, None);
 
         // CONTRIBUTING.md section should exist but be truncated to 3000 chars
         assert!(prompt.contains("## CONTRIBUTING.md"));

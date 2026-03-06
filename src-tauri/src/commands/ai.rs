@@ -1009,6 +1009,12 @@ pub async fn analyze_item_action(
     );
     let prompt_hash = format!("{:x}", md5::compute(&action_prompt));
 
+    // User-visible label for the chat — don't show the raw prompt
+    let display_label = match action_type {
+        ActionType::Analyze => "Analyze".to_string(),
+        ActionType::DraftResponse => "Draft Response".to_string(),
+    };
+
     // Save analysis history record
     {
         let db = state.get_db().await?;
@@ -1076,7 +1082,7 @@ pub async fn analyze_item_action(
             id: Set(Uuid::new_v4().to_string()),
             item_id: Set(request.item_id.clone()),
             role: Set("user".to_string()),
-            content: Set(action_prompt),
+            content: Set(display_label.clone()),
             created_at: Set(now),
             input_tokens: Set(None),
             output_tokens: Set(None),
@@ -1154,7 +1160,7 @@ pub async fn analyze_item_action(
                 id: Set(Uuid::new_v4().to_string()),
                 item_id: Set(request.item_id.clone()),
                 role: Set("user".to_string()),
-                content: Set(action_prompt),
+                content: Set(display_label),
                 created_at: Set(chrono::Utc::now().naive_utc()),
                 input_tokens: Set(None),
                 output_tokens: Set(None),
@@ -1455,4 +1461,251 @@ pub async fn get_analyzed_item_ids(
         })?;
 
     Ok(ids)
+}
+
+#[tauri::command]
+pub async fn post_item_comment(
+    state: State<'_, AppState>,
+    item_id: String,
+    comment: String,
+) -> Result<(), CommandError> {
+    let db = state.get_db().await?;
+
+    // 1. Load item
+    let item = ossue_core::models::item::Entity::find_by_id(&item_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, item_id = %item_id, "Failed to query item");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Item".to_string(),
+            id: item_id.clone(),
+        })?;
+
+    let type_data = item.parse_type_data().map_err(|e| CommandError::Internal {
+        message: e.to_string(),
+    })?;
+    let external_id = type_data
+        .external_id()
+        .ok_or_else(|| CommandError::Internal {
+            message: "Item has no external ID".to_string(),
+        })?;
+
+    // 2. Load project
+    let project = ossue_core::models::project::Entity::find_by_id(&item.project_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, project_id = %item.project_id, "Failed to query project");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Project".to_string(),
+            id: item.project_id.clone(),
+        })?;
+
+    let token = get_project_token(&project, &db).await?;
+    let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
+
+    match project.platform {
+        ossue_core::enums::Platform::GitHub => {
+            let client = ossue_core::services::github::GitHubClient::with_base_url(token, base_url);
+            client
+                .post_comment(&project.owner, &project.name, external_id, &comment)
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+        ossue_core::enums::Platform::GitLab => {
+            let client = ossue_core::services::gitlab::GitLabClient::new(token, base_url);
+            let gitlab_project_id =
+                project
+                    .external_project_id
+                    .ok_or_else(|| CommandError::Internal {
+                        message: "GitLab project has no external project ID".to_string(),
+                    })?;
+            client
+                .post_comment(
+                    gitlab_project_id,
+                    external_id,
+                    &item.item_type.to_string(),
+                    &comment,
+                )
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn merge_pull_request(
+    state: State<'_, AppState>,
+    item_id: String,
+) -> Result<(), CommandError> {
+    let db = state.get_db().await?;
+
+    // 1. Load item
+    let item = ossue_core::models::item::Entity::find_by_id(&item_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, item_id = %item_id, "Failed to query item");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Item".to_string(),
+            id: item_id.clone(),
+        })?;
+
+    // Verify it's a PR
+    if item.item_type != ossue_core::enums::ItemType::PullRequest {
+        return Err(CommandError::Internal {
+            message: "Item is not a pull request".to_string(),
+        });
+    }
+
+    let type_data = item.parse_type_data().map_err(|e| CommandError::Internal {
+        message: e.to_string(),
+    })?;
+    let external_id = type_data
+        .external_id()
+        .ok_or_else(|| CommandError::Internal {
+            message: "Item has no external ID".to_string(),
+        })?;
+
+    // 2. Load project
+    let project = ossue_core::models::project::Entity::find_by_id(&item.project_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, project_id = %item.project_id, "Failed to query project");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Project".to_string(),
+            id: item.project_id.clone(),
+        })?;
+
+    let token = get_project_token(&project, &db).await?;
+    let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
+
+    match project.platform {
+        ossue_core::enums::Platform::GitHub => {
+            let client = ossue_core::services::github::GitHubClient::with_base_url(token, base_url);
+            client
+                .merge_pull_request(&project.owner, &project.name, external_id)
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+        ossue_core::enums::Platform::GitLab => {
+            let client = ossue_core::services::gitlab::GitLabClient::new(token, base_url);
+            let gitlab_project_id =
+                project
+                    .external_project_id
+                    .ok_or_else(|| CommandError::Internal {
+                        message: "GitLab project has no external project ID".to_string(),
+                    })?;
+            client
+                .merge_merge_request(gitlab_project_id, external_id)
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_item(state: State<'_, AppState>, item_id: String) -> Result<(), CommandError> {
+    let db = state.get_db().await?;
+
+    // 1. Load item
+    let item = ossue_core::models::item::Entity::find_by_id(&item_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, item_id = %item_id, "Failed to query item");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Item".to_string(),
+            id: item_id.clone(),
+        })?;
+
+    let type_data = item.parse_type_data().map_err(|e| CommandError::Internal {
+        message: e.to_string(),
+    })?;
+    let external_id = type_data
+        .external_id()
+        .ok_or_else(|| CommandError::Internal {
+            message: "Item has no external ID".to_string(),
+        })?;
+
+    // 2. Load project
+    let project = ossue_core::models::project::Entity::find_by_id(&item.project_id)
+        .one(&db)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, project_id = %item.project_id, "Failed to query project");
+            CommandError::Internal {
+                message: e.to_string(),
+            }
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Project".to_string(),
+            id: item.project_id.clone(),
+        })?;
+
+    let token = get_project_token(&project, &db).await?;
+    let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
+
+    match project.platform {
+        ossue_core::enums::Platform::GitHub => {
+            let client = ossue_core::services::github::GitHubClient::with_base_url(token, base_url);
+            client
+                .close_issue(&project.owner, &project.name, external_id)
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+        ossue_core::enums::Platform::GitLab => {
+            let client = ossue_core::services::gitlab::GitLabClient::new(token, base_url);
+            let gitlab_project_id =
+                project
+                    .external_project_id
+                    .ok_or_else(|| CommandError::Internal {
+                        message: "GitLab project has no external project ID".to_string(),
+                    })?;
+            client
+                .close_issue(gitlab_project_id, external_id)
+                .await
+                .map_err(|e| CommandError::PlatformApi {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+
+    Ok(())
 }
