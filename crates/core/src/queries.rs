@@ -1,4 +1,5 @@
 use sea_orm::{
+    sea_query::{Expr, SimpleExpr, Value},
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
 };
 
@@ -62,18 +63,26 @@ pub async fn list_items(
         let q = q.trim();
         if !q.is_empty() {
             let pattern = format!("%{}%", q);
+            let json_like = |path: &str, pat: &str| -> SimpleExpr {
+                Expr::cust_with_values::<_, Value, _>(
+                    &format!("json_extract(type_data, '{path}') LIKE ?"),
+                    [pat.into()],
+                )
+            };
             let mut search_cond = Condition::any()
                 .add(item::Column::Title.like(&pattern))
                 .add(item::Column::Body.like(&pattern))
-                // Search author and labels in type_data JSON
-                .add(item::Column::TypeData.like(format!("%\"author\":\"%{}%\"%", q)))
-                .add(item::Column::TypeData.like(format!("%\"labels\":%\"%{}%\"%", q)))
-                .add(item::Column::TypeData.like(format!("%\"pr_branch\":\"%{}%\"%", q)));
+                // Use json_extract to search within specific JSON fields,
+                // preventing cross-field LIKE matching
+                .add(json_like("$.author", &pattern))
+                .add(json_like("$.labels", &pattern))
+                .add(json_like("$.pr_branch", &pattern));
             // If the query looks like a number, also match external_id in type_data JSON
-            if q.trim_start_matches('#').parse::<i64>().is_ok() {
-                let num_str = q.trim_start_matches('#');
-                let id_pattern = format!("%\"external_id\":{}%", num_str);
-                search_cond = search_cond.add(item::Column::TypeData.like(&id_pattern));
+            if let Ok(num) = q.trim_start_matches('#').parse::<i64>() {
+                search_cond = search_cond.add(Expr::cust_with_values::<_, Value, _>(
+                    "json_extract(type_data, '$.external_id') = ?",
+                    [num.into()],
+                ));
             }
             query = query.filter(search_cond);
         }
