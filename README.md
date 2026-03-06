@@ -76,6 +76,20 @@ This downloads the correct `.dmg` for your architecture, installs the app, and h
 3. **Configure AI** — Set your API key or choose local mode
 4. **Start triaging** — Your inbox fills automatically
 
+## Updating
+
+### macOS
+
+Re-run the install script — it replaces the existing version with the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kaplanelad/ossue/main/install.sh | bash
+```
+
+### Windows / Linux
+
+Download the latest release from the [Releases](https://github.com/kaplanelad/ossue/releases) page and install it over the existing version.
+
 ## Configuration
 
 Ossue stores all data locally in an SQLite database. Configure AI analysis via the Settings page — supports API mode (bring your own key) or local mode.
