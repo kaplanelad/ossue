@@ -739,12 +739,7 @@ pub async fn submit_draft_to_provider(
     let token = get_project_token(&project, &db).await?;
 
     // 4. Build request
-    const SYSTEM_LABEL: &str = "from-note";
-    let labels = {
-        let mut l = note_data.labels.unwrap_or_default();
-        l.push(SYSTEM_LABEL.to_string());
-        Some(l)
-    };
+    let labels = note_data.labels.unwrap_or_default();
 
     let request = CreateIssueRequest {
         title,
@@ -753,7 +748,11 @@ pub async fn submit_draft_to_provider(
         } else {
             Some(draft.body.clone())
         },
-        labels,
+        labels: if labels.is_empty() {
+            None
+        } else {
+            Some(labels)
+        },
     };
 
     // 5. Call provider
