@@ -13,6 +13,10 @@ interface UiState {
   // Refresh interval (seconds)
   refreshInterval: number;
   setRefreshInterval: (interval: number) => void;
+
+  // Group by repository
+  groupByRepository: boolean;
+  setGroupByRepository: (value: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -26,4 +30,10 @@ export const useUiStore = create<UiState>((set) => ({
 
   refreshInterval: 1800,
   setRefreshInterval: (interval) => set({ refreshInterval: interval }),
+
+  groupByRepository: localStorage.getItem("groupByRepository") === "true",
+  setGroupByRepository: (value) => {
+    localStorage.setItem("groupByRepository", String(value));
+    set({ groupByRepository: value });
+  },
 }));
