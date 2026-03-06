@@ -43,6 +43,7 @@ export function CreateNoteDialog() {
   const [keepOpen, setKeepOpen] = useState(false);
   const [mode, setMode] = useState<"note" | "issue">("issue");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const selectTriggerRef = useRef<HTMLButtonElement>(null);
 
   const isEditing = !!editingNote;
 
@@ -59,7 +60,17 @@ export function CreateNoteDialog() {
       }
       setIsSaving(false);
       setIsAnalyzing(false);
-      setTimeout(() => textareaRef.current?.focus(), 100);
+      const resolvedProjectId = editingNote
+        ? editingNote.project_id
+        : (defaultProjectId ?? lastUsedProjectId ?? "");
+      setTimeout(() => {
+        if (!resolvedProjectId) {
+          selectTriggerRef.current?.focus();
+          selectTriggerRef.current?.click();
+        } else {
+          textareaRef.current?.focus();
+        }
+      }, 100);
     }
   }, [isCreateNoteOpen, editingNote]);
 
@@ -184,9 +195,15 @@ export function CreateNoteDialog() {
             </span>
             <Select
               value={selectedProjectId}
-              onValueChange={setSelectedProjectId}
+              onValueChange={(value) => {
+                const wasEmpty = !selectedProjectId;
+                setSelectedProjectId(value);
+                if (wasEmpty && value) {
+                  setTimeout(() => textareaRef.current?.focus(), 100);
+                }
+              }}
             >
-              <SelectTrigger className="h-8 text-sm flex-1">
+              <SelectTrigger ref={selectTriggerRef} className="h-8 text-sm flex-1">
                 <SelectValue placeholder="Choose a repository..." />
               </SelectTrigger>
               <SelectContent>
