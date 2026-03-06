@@ -254,10 +254,8 @@ fn fix_path_env() {
     };
 
     if !home.is_empty() {
-        let mut extra: Vec<String> = vec![
-            format!("{home}/.local/bin"),
-            format!("{home}/.cargo/bin"),
-        ];
+        let mut extra: Vec<String> =
+            vec![format!("{home}/.local/bin"), format!("{home}/.cargo/bin")];
 
         #[cfg(target_os = "macos")]
         extra.push("/opt/homebrew/bin".into());
@@ -269,8 +267,7 @@ fn fix_path_env() {
         });
 
         let current = std::env::var("PATH").unwrap_or_default();
-        let existing: std::collections::HashSet<&str> =
-            current.split(separator).collect();
+        let existing: std::collections::HashSet<&str> = current.split(separator).collect();
 
         let missing: Vec<&str> = extra
             .iter()
