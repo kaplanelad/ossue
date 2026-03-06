@@ -2,8 +2,9 @@ import { useAppStore } from "@/stores/appStore";
 import { useChat } from "@/hooks/useChat";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, X } from "lucide-react";
+import { ExternalLink, Trash2, X, Copy, Check } from "lucide-react";
 
 interface ChatPanelProps {
   width: number;
@@ -37,17 +38,22 @@ export function ChatPanel({ width }: ChatPanelProps) {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label="Open in browser"
-            asChild
-          >
-            <a href={selectedItem.type_data.kind !== "note" ? selectedItem.type_data.url : undefined} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
+          {selectedItem.type_data.kind !== "note" && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label="Open in browser"
+                asChild
+              >
+                <a href={selectedItem.type_data.url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Button>
+              <CopyUrlButton url={selectedItem.type_data.url} />
+            </>
+          )}
           {messages.length > 0 && (
             <Button
               variant="ghost"
@@ -92,5 +98,31 @@ export function ChatPanel({ width }: ChatPanelProps) {
         hasMessages={messages.length > 0}
       />
     </div>
+  );
+}
+
+function CopyUrlButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8"
+      aria-label="Copy URL"
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <Check className="h-4 w-4 text-green-500" />
+      ) : (
+        <Copy className="h-4 w-4" />
+      )}
+    </Button>
   );
 }
