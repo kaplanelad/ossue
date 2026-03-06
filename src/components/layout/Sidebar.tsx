@@ -136,7 +136,7 @@ export function Sidebar() {
               key={f.value}
               variant={itemTypeFilter === f.value ? "secondary" : "ghost"}
               size="sm"
-              className={`justify-start gap-2 ${itemTypeFilter === f.value ? (f.value === "note" ? "border-l-2 border-l-amber-500 dark:border-l-amber-400" : "border-l-2 border-l-primary") : ""}`}
+              className={`w-full !justify-start gap-2 ${itemTypeFilter === f.value ? (f.value === "note" ? "border-l-2 border-l-amber-500 dark:border-l-amber-400" : "border-l-2 border-l-primary") : ""}`}
               onClick={() => handleTypeFilterClick(f.value)}
             >
               {f.icon}
