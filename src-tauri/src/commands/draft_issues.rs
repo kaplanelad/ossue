@@ -346,7 +346,8 @@ pub async fn get_draft_issue_count(state: State<'_, AppState>) -> Result<i64, Co
 
 fn build_system_prompt(repo_labels: &[String]) -> String {
     let labels_instruction = if repo_labels.is_empty() {
-        "- Labels: Use an empty array for labels since repository labels could not be determined.".to_string()
+        "- Labels: Use an empty array for labels since repository labels could not be determined."
+            .to_string()
     } else {
         format!(
             "- Labels: Only use labels from this list: [{}]. If no labels match, use an empty array.",
@@ -467,7 +468,15 @@ pub async fn generate_issue_from_draft(
     tracing::info!(id = %id, "Generating issue from draft");
 
     // Load draft and project info
-    let (raw_content, project_owner, project_name, project_platform, project_url, token, repo_labels) = {
+    let (
+        raw_content,
+        project_owner,
+        project_name,
+        project_platform,
+        project_url,
+        token,
+        repo_labels,
+    ) = {
         let db = state.get_db().await?;
 
         let draft = item::Entity::find_by_id(&id)
@@ -868,22 +877,16 @@ pub async fn submit_draft_to_provider(
     // 5. Call provider (with retry without labels on failure)
     let first_result = match project.platform {
         ossue_core::enums::Platform::GitHub => {
-            let base_url =
-                ossue_core::services::auth::get_project_base_url(&db, &project).await;
-            let client = ossue_core::services::github::GitHubClient::with_base_url(
-                token.clone(),
-                base_url,
-            );
+            let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
+            let client =
+                ossue_core::services::github::GitHubClient::with_base_url(token.clone(), base_url);
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
         }
         ossue_core::enums::Platform::GitLab => {
             let base_url = get_gitlab_base_url(&project, &db).await;
-            let client = ossue_core::services::gitlab::GitLabClient::new(
-                token.clone(),
-                base_url,
-            );
+            let client = ossue_core::services::gitlab::GitLabClient::new(token.clone(), base_url);
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
@@ -920,10 +923,8 @@ pub async fn submit_draft_to_provider(
                 }
                 ossue_core::enums::Platform::GitLab => {
                     let base_url = get_gitlab_base_url(&project, &db).await;
-                    let client = ossue_core::services::gitlab::GitLabClient::new(
-                        token.clone(),
-                        base_url,
-                    );
+                    let client =
+                        ossue_core::services::gitlab::GitLabClient::new(token.clone(), base_url);
                     client
                         .create_issue(&project.owner, &project.name, &request_without_labels)
                         .await
