@@ -865,27 +865,78 @@ pub async fn submit_draft_to_provider(
         },
     };
 
-    // 5. Call provider
-    let response: CreateIssueResponse = match project.platform {
+    // 5. Call provider (with retry without labels on failure)
+    let first_result = match project.platform {
         ossue_core::enums::Platform::GitHub => {
-            let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
-            let client = ossue_core::services::github::GitHubClient::with_base_url(token, base_url);
+            let base_url =
+                ossue_core::services::auth::get_project_base_url(&db, &project).await;
+            let client = ossue_core::services::github::GitHubClient::with_base_url(
+                token.clone(),
+                base_url,
+            );
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
-                .map_err(|e| CommandError::PlatformApi {
-                    message: e.to_string(),
-                })?
         }
         ossue_core::enums::Platform::GitLab => {
             let base_url = get_gitlab_base_url(&project, &db).await;
-            let client = ossue_core::services::gitlab::GitLabClient::new(token, base_url);
+            let client = ossue_core::services::gitlab::GitLabClient::new(
+                token.clone(),
+                base_url,
+            );
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
-                .map_err(|e| CommandError::PlatformApi {
-                    message: e.to_string(),
-                })?
+        }
+    };
+
+    let response: CreateIssueResponse = match first_result {
+        Ok(resp) => resp,
+        Err(e) if request.labels.is_some() => {
+            tracing::warn!(
+                error = %e,
+                id = %id,
+                "Issue creation failed with labels, retrying without labels"
+            );
+            let request_without_labels = CreateIssueRequest {
+                title: request.title.clone(),
+                body: request.body.clone(),
+                labels: None,
+            };
+            match project.platform {
+                ossue_core::enums::Platform::GitHub => {
+                    let base_url =
+                        ossue_core::services::auth::get_project_base_url(&db, &project).await;
+                    let client = ossue_core::services::github::GitHubClient::with_base_url(
+                        token.clone(),
+                        base_url,
+                    );
+                    client
+                        .create_issue(&project.owner, &project.name, &request_without_labels)
+                        .await
+                        .map_err(|e| CommandError::PlatformApi {
+                            message: e.to_string(),
+                        })?
+                }
+                ossue_core::enums::Platform::GitLab => {
+                    let base_url = get_gitlab_base_url(&project, &db).await;
+                    let client = ossue_core::services::gitlab::GitLabClient::new(
+                        token.clone(),
+                        base_url,
+                    );
+                    client
+                        .create_issue(&project.owner, &project.name, &request_without_labels)
+                        .await
+                        .map_err(|e| CommandError::PlatformApi {
+                            message: e.to_string(),
+                        })?
+                }
+            }
+        }
+        Err(e) => {
+            return Err(CommandError::PlatformApi {
+                message: e.to_string(),
+            });
         }
     };
 
