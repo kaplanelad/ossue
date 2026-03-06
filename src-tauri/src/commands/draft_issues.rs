@@ -344,27 +344,121 @@ pub async fn get_draft_issue_count(state: State<'_, AppState>) -> Result<i64, Co
     Ok(count as i64)
 }
 
-const DRAFT_ISSUE_SYSTEM_PROMPT: &str = r#"You are an AI assistant that converts raw brain dumps into structured GitHub/GitLab issues.
+fn build_system_prompt(repo_labels: &[String]) -> String {
+    let labels_instruction = if repo_labels.is_empty() {
+        "- Labels: Use an empty array for labels since repository labels could not be determined."
+            .to_string()
+    } else {
+        format!(
+            "- Labels: Only use labels from this list: [{}]. If no labels match, use an empty array.",
+            repo_labels.join(", ")
+        )
+    };
+
+    format!(
+        r#"You are an AI assistant that converts raw brain dumps into structured GitHub/GitLab issues.
 
 You MUST respond with valid JSON only. No markdown fences, no explanation text — just the JSON object.
 
 Response format:
-{
+{{
   "title": "Imperative, specific title (e.g., 'Add rate limiting to /api/upload endpoint')",
   "body": "Markdown body with appropriate sections. For bugs use: ## Steps to Reproduce, ## Expected Behavior, ## Actual Behavior. For features use: ## Description, ## Acceptance Criteria. For tasks use: ## Description, ## Tasks.",
   "labels": ["label1", "label2"],
   "priority": "critical|high|medium|low",
   "area": "backend|frontend|infra|docs|testing|design|other"
-}
+}}
 
 Rules:
 - Title must be imperative and specific, not vague
 - Body should use markdown with clear sections
-- Maximum 3 labels, choose from common ones: bug, feature, enhancement, documentation, performance, security, refactor, testing, ui, ux, api, database, infra, ci-cd
+- Maximum 3 labels
+{labels_instruction}
 - Infer priority from urgency signals in the text (e.g., "critical", "ASAP", "blocking" → high/critical; no urgency → medium)
 - Infer area from technical context clues
 - If anything is ambiguous, mark it with [TODO: clarify]
-- Keep the body concise but complete"#;
+- Keep the body concise but complete"#
+    )
+}
+
+/// Fetch repository labels from the provider, returning an empty vec on failure.
+async fn fetch_repo_labels(
+    platform: &ossue_core::enums::Platform,
+    owner: &str,
+    name: &str,
+    token: &str,
+    db: &sea_orm::DatabaseConnection,
+    project: &ossue_core::models::project::Model,
+) -> Vec<String> {
+    match platform {
+        ossue_core::enums::Platform::GitHub => {
+            let base_url = ossue_core::services::auth::get_project_base_url(db, project).await;
+            let client = ossue_core::services::github::GitHubClient::with_base_url(
+                token.to_string(),
+                base_url,
+            );
+            match client.list_labels(owner, name).await {
+                Ok(labels) => labels,
+                Err(e) => {
+                    tracing::warn!(error = %e, owner = %owner, repo = %name, "Failed to fetch GitHub labels, continuing without");
+                    Vec::new()
+                }
+            }
+        }
+        ossue_core::enums::Platform::GitLab => {
+            let base_url = get_gitlab_base_url(project, db).await;
+            let client =
+                ossue_core::services::gitlab::GitLabClient::new(token.to_string(), base_url);
+            match client.list_labels(owner, name).await {
+                Ok(labels) => labels,
+                Err(e) => {
+                    tracing::warn!(error = %e, owner = %owner, repo = %name, "Failed to fetch GitLab labels, continuing without");
+                    Vec::new()
+                }
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn list_repo_labels(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<String>, CommandError> {
+    tracing::debug!(project_id = %project_id, "Fetching repository labels");
+    let db = state.get_db().await?;
+
+    let project = ossue_core::models::project::Entity::find_by_id(&project_id)
+        .one(&db)
+        .await
+        .map_err(|e| CommandError::Internal {
+            message: e.to_string(),
+        })?
+        .ok_or_else(|| CommandError::NotFound {
+            entity: "Project".to_string(),
+            id: project_id.clone(),
+        })?;
+
+    let token = match get_project_token(&project, &db).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(error = %e, project_id = %project_id, "Failed to get token for label fetch, returning empty list");
+            return Ok(Vec::new());
+        }
+    };
+
+    let labels = fetch_repo_labels(
+        &project.platform,
+        &project.owner,
+        &project.name,
+        &token,
+        &db,
+        &project,
+    )
+    .await;
+
+    Ok(labels)
+}
 
 #[tauri::command]
 pub async fn generate_issue_from_draft(
@@ -374,7 +468,15 @@ pub async fn generate_issue_from_draft(
     tracing::info!(id = %id, "Generating issue from draft");
 
     // Load draft and project info
-    let (raw_content, project_owner, project_name, project_platform, project_url, token) = {
+    let (
+        raw_content,
+        project_owner,
+        project_name,
+        project_platform,
+        project_url,
+        token,
+        repo_labels,
+    ) = {
         let db = state.get_db().await?;
 
         let draft = item::Entity::find_by_id(&id)
@@ -419,6 +521,17 @@ pub async fn generate_issue_from_draft(
 
         let token = get_project_token(&project, &db).await.unwrap_or_default();
 
+        // Fetch repository labels for the AI prompt
+        let labels = fetch_repo_labels(
+            &project.platform,
+            &project.owner,
+            &project.name,
+            &token,
+            &db,
+            &project,
+        )
+        .await;
+
         (
             note_data.raw_content.clone(),
             project.owner.clone(),
@@ -426,8 +539,12 @@ pub async fn generate_issue_from_draft(
             project.platform.clone(),
             project.url.clone(),
             token,
+            labels,
         )
     }; // db lock released
+
+    // Build system prompt with repository labels
+    let system_prompt = build_system_prompt(&repo_labels);
 
     // Load AI settings
     let (ai_mode, api_key, ai_model) = {
@@ -464,7 +581,7 @@ pub async fn generate_issue_from_draft(
         let service = ossue_core::services::ai_api::AiApiService::new_with_system(
             api_key,
             ai_model.clone(),
-            DRAFT_ISSUE_SYSTEM_PROMPT.to_string(),
+            system_prompt.clone(),
         );
 
         let messages = vec![ossue_core::services::ai_api::ApiMessage {
@@ -520,7 +637,7 @@ pub async fn generate_issue_from_draft(
             "-p".to_string(),
             user_message.clone(),
             "--system-prompt".to_string(),
-            DRAFT_ISSUE_SYSTEM_PROMPT.to_string(),
+            system_prompt.clone(),
             "--output-format".to_string(),
             "text".to_string(),
         ];
@@ -757,27 +874,70 @@ pub async fn submit_draft_to_provider(
         },
     };
 
-    // 5. Call provider
-    let response: CreateIssueResponse = match project.platform {
+    // 5. Call provider (with retry without labels on failure)
+    let first_result = match project.platform {
         ossue_core::enums::Platform::GitHub => {
             let base_url = ossue_core::services::auth::get_project_base_url(&db, &project).await;
-            let client = ossue_core::services::github::GitHubClient::with_base_url(token, base_url);
+            let client =
+                ossue_core::services::github::GitHubClient::with_base_url(token.clone(), base_url);
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
-                .map_err(|e| CommandError::PlatformApi {
-                    message: e.to_string(),
-                })?
         }
         ossue_core::enums::Platform::GitLab => {
             let base_url = get_gitlab_base_url(&project, &db).await;
-            let client = ossue_core::services::gitlab::GitLabClient::new(token, base_url);
+            let client = ossue_core::services::gitlab::GitLabClient::new(token.clone(), base_url);
             client
                 .create_issue(&project.owner, &project.name, &request)
                 .await
-                .map_err(|e| CommandError::PlatformApi {
-                    message: e.to_string(),
-                })?
+        }
+    };
+
+    let response: CreateIssueResponse = match first_result {
+        Ok(resp) => resp,
+        Err(e) if request.labels.is_some() => {
+            tracing::warn!(
+                error = %e,
+                id = %id,
+                "Issue creation failed with labels, retrying without labels"
+            );
+            let request_without_labels = CreateIssueRequest {
+                title: request.title.clone(),
+                body: request.body.clone(),
+                labels: None,
+            };
+            match project.platform {
+                ossue_core::enums::Platform::GitHub => {
+                    let base_url =
+                        ossue_core::services::auth::get_project_base_url(&db, &project).await;
+                    let client = ossue_core::services::github::GitHubClient::with_base_url(
+                        token.clone(),
+                        base_url,
+                    );
+                    client
+                        .create_issue(&project.owner, &project.name, &request_without_labels)
+                        .await
+                        .map_err(|e| CommandError::PlatformApi {
+                            message: e.to_string(),
+                        })?
+                }
+                ossue_core::enums::Platform::GitLab => {
+                    let base_url = get_gitlab_base_url(&project, &db).await;
+                    let client =
+                        ossue_core::services::gitlab::GitLabClient::new(token.clone(), base_url);
+                    client
+                        .create_issue(&project.owner, &project.name, &request_without_labels)
+                        .await
+                        .map_err(|e| CommandError::PlatformApi {
+                            message: e.to_string(),
+                        })?
+                }
+            }
+        }
+        Err(e) => {
+            return Err(CommandError::PlatformApi {
+                message: e.to_string(),
+            });
         }
     };
 

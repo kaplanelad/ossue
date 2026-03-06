@@ -211,6 +211,54 @@ impl GitLabClient {
         Ok(all_projects)
     }
 
+    pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>> {
+        let path = format!("{owner}/{repo}");
+        tracing::info!(path = %path, "Fetching GitLab repository labels");
+
+        let project_id = self.get_project_id(&path).await?;
+
+        #[derive(Debug, Deserialize)]
+        struct GitLabLabel {
+            name: String,
+        }
+
+        let response = self
+            .client
+            .get(format!(
+                "{}/api/v4/projects/{project_id}/labels",
+                self.base_url
+            ))
+            .header("PRIVATE-TOKEN", &self.token)
+            .query(&[("per_page", "100")])
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, path = %path, "GitLab API network error fetching labels");
+                e
+            })?;
+
+        let body = response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), path = %path, "GitLab API error fetching labels");
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, path = %path, "Failed to read labels response body");
+                e
+            })?;
+
+        let labels: Vec<GitLabLabel> = serde_json::from_str(&body).map_err(|e| {
+            tracing::error!(error = %e, path = %path, body_preview = %&body[..body.len().min(200)], "Failed to decode labels response");
+            e
+        })?;
+
+        let names: Vec<String> = labels.into_iter().map(|l| l.name).collect();
+        tracing::info!(path = %path, count = names.len(), "Fetched GitLab repository labels");
+        Ok(names)
+    }
+
     pub async fn list_issues(&self, project_id: i64) -> Result<Vec<GitLabIssue>> {
         tracing::info!("Fetching GitLab issues for project {}", project_id);
         let mut all_issues = Vec::new();

@@ -766,6 +766,50 @@ impl GitHubClient {
         Ok((connection.nodes, has_next_page, end_cursor))
     }
 
+    pub async fn list_labels(&self, owner: &str, repo: &str) -> Result<Vec<String>> {
+        tracing::info!(owner = %owner, repo = %repo, "Fetching repository labels");
+
+        #[derive(Debug, Deserialize)]
+        struct GitHubLabel {
+            name: String,
+        }
+
+        let response = self
+            .client
+            .get(format!("{}/repos/{owner}/{repo}/labels", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "ossue")
+            .query(&[("per_page", "100")])
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, owner = %owner, repo = %repo, "GitHub API network error fetching labels");
+                e
+            })?;
+
+        let body = response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), owner = %owner, repo = %repo, "GitHub API error fetching labels");
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, owner = %owner, repo = %repo, "Failed to read labels response body");
+                e
+            })?;
+
+        let labels: Vec<GitHubLabel> = serde_json::from_str(&body).map_err(|e| {
+            tracing::error!(error = %e, owner = %owner, repo = %repo, body_preview = %&body[..body.len().min(200)], "Failed to decode labels response");
+            e
+        })?;
+
+        let names: Vec<String> = labels.into_iter().map(|l| l.name).collect();
+        tracing::info!(owner = %owner, repo = %repo, count = names.len(), "Fetched repository labels");
+        Ok(names)
+    }
+
     pub async fn get_pr_diff(&self, owner: &str, repo: &str, pr_number: i32) -> Result<String> {
         tracing::debug!(owner = %owner, repo = %repo, pr_number = pr_number, "Fetching PR diff");
         let diff = self

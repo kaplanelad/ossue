@@ -172,6 +172,7 @@ pub fn run() {
             commands::draft_issues::submit_draft_to_provider,
             commands::draft_issues::get_draft_issue_count,
             commands::draft_issues::toggle_draft_issue_star,
+            commands::draft_issues::list_repo_labels,
             // Settings
             commands::settings::get_settings,
             commands::settings::update_setting,
