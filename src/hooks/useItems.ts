@@ -108,13 +108,15 @@ export function useItems() {
         return;
       }
       managerRef.current?.syncProject(selectedProjectIds[0]);
-    } else if (selectedProjectIds.length === 0) {
-      const syncEnabled = projects.filter((p) => p.sync_enabled);
-      if (syncEnabled.length === 0) {
+    } else {
+      const candidates = selectedProjectIds.length > 1
+        ? projects.filter((p) => selectedProjectIds.includes(p.id) && p.sync_enabled)
+        : projects.filter((p) => p.sync_enabled);
+      if (candidates.length === 0) {
         toast.error("No projects with sync enabled");
         return;
       }
-      managerRef.current?.syncMultipleProjects(syncEnabled.map((p) => p.id));
+      managerRef.current?.syncMultipleProjects(candidates.map((p) => p.id));
     }
   }, [selectedProjectIds, syncDisabled, projects]);
 
@@ -127,13 +129,15 @@ export function useItems() {
         return;
       }
       managerRef.current?.fullSyncProject(projectId);
-    } else if (selectedProjectIds.length === 0) {
-      const syncEnabled = projects.filter((p) => p.sync_enabled);
-      if (syncEnabled.length === 0) {
+    } else {
+      const candidates = selectedProjectIds.length > 1
+        ? projects.filter((p) => selectedProjectIds.includes(p.id) && p.sync_enabled)
+        : projects.filter((p) => p.sync_enabled);
+      if (candidates.length === 0) {
         toast.error("No projects with sync enabled");
         return;
       }
-      for (const p of syncEnabled) {
+      for (const p of candidates) {
         managerRef.current?.fullSyncProject(p.id);
       }
     }
