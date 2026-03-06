@@ -12,8 +12,12 @@ sea-orm = { version = "1", features = [
     "macros",
 ] }
 sea-orm-migration = { version = "1" }
-git2 = "0.19"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+git2 = { version = "0.20", features = ["vendored-openssl"] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "stream",
+    "rustls-tls",
+] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
