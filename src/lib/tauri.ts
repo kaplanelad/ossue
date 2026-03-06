@@ -191,6 +191,8 @@ export const getDraftIssueCount = () =>
   invoke<number>("get_draft_issue_count");
 export const toggleDraftIssueStar = (id: string, isStarred: boolean) =>
   invoke<void>("toggle_draft_issue_star", { id, isStarred });
+export const listRepoLabels = (projectId: string) =>
+  invoke<string[]>("list_repo_labels", { projectId });
 
 // Logging commands
 export const getLogLevel = () => invoke<string>("get_log_level");
