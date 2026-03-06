@@ -1019,11 +1019,9 @@ impl IssueCreator for GitHubClient {
                 403 => {
                     let detail = api_message.as_deref().unwrap_or("");
                     if detail.contains("Resource not accessible by personal access token") {
-                        format!(
-                            "Permission denied: classic personal access tokens may be restricted by this organization. \
-                             Try using a fine-grained token with 'Issues: Read and write' permission, \
-                             or check the organization's token policy in Settings > Third-party access."
-                        )
+                        "Permission denied: classic personal access tokens may be restricted by this organization. \
+                         Try using a fine-grained token with 'Issues: Read and write' permission, \
+                         or check the organization's token policy in Settings > Third-party access.".to_string()
                     } else {
                         format!(
                             "Permission denied: your token doesn't have write access to {owner}/{repo}. \
