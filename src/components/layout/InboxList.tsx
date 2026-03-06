@@ -39,13 +39,13 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
-import type { AnalysisAction } from "@/types";
+import type { AnalysisAction, Item } from "@/types";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 
 export function InboxList() {
   const { items, syncItems, isSyncing, syncDisabled, setSelectedItemId, selectedItemId, markRead, markUnread, deleteItem, restoreItem, fullSync } = useItems();
-  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
+  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, setItemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
   const {
     selectedNoteId,
     setSelectedNoteId,
@@ -131,14 +131,17 @@ export function InboxList() {
   }, [items, selectedProjectIds, itemTypeFilter, showAnalyzedOnly, analyzedItemIds, showStarredOnly]);
 
   // Compute linked items map: itemId → linked Item[]
+  // Uses allItemsCache so links work even when filtered by type (e.g. Issues or PRs view)
+  const allItemsCache = useItemStore((s) => s.allItemsCache);
   const linkedItemsMap = useMemo(() => {
-    const map = new Map<string, typeof filteredItems>();
+    const allItems = Array.from(allItemsCache.values());
+    const map = new Map<string, Item[]>();
     // Index: projectId → externalId → Item
-    const byProjectAndNumber = new Map<string, Map<number, typeof filteredItems[0]>>();
+    const byProjectAndNumber = new Map<string, Map<number, Item>>();
     // Index: projectId → [PR items with refs]
-    const prsByProject = new Map<string, { pr: typeof filteredItems[0]; refs: number[] }[]>();
+    const prsByProject = new Map<string, { pr: Item; refs: number[] }[]>();
 
-    for (const item of filteredItems) {
+    for (const item of allItems) {
       if (item.type_data.kind === "note") continue;
       const key = item.project_id;
       if (!byProjectAndNumber.has(key)) byProjectAndNumber.set(key, new Map());
@@ -158,7 +161,7 @@ export function InboxList() {
       const numIndex = byProjectAndNumber.get(projId);
       if (!numIndex) continue;
       for (const { pr, refs } of prs) {
-        const linked = refs.map((n) => numIndex.get(n)).filter((i): i is typeof filteredItems[0] => !!i && i.id !== pr.id);
+        const linked = refs.map((n) => numIndex.get(n)).filter((i): i is Item => !!i && i.id !== pr.id);
         if (linked.length > 0) map.set(pr.id, linked);
         // Issue → linking PRs (reverse)
         for (const issue of linked) {
@@ -170,7 +173,7 @@ export function InboxList() {
       }
     }
     return map;
-  }, [filteredItems]);
+  }, [allItemsCache]);
 
   const selectedIdSet = useMemo(
     () => new Set(selectedItemIds),
@@ -283,6 +286,14 @@ export function InboxList() {
     clearNoteSelection();
     setSelectedItemId(id);
     await markRead(id);
+  };
+
+  const handleNavigateToLinkedItem = async (id: string) => {
+    // Switch to "all" filter so the linked item is visible regardless of current type filter
+    if (itemTypeFilter !== "all") {
+      setItemTypeFilter("all");
+    }
+    handleItemClick(id);
   };
 
   const handleToggleStar = async (item: { id: string; is_starred: boolean }) => {
@@ -908,7 +919,7 @@ export function InboxList() {
                           isDismissedView={showDismissedOnly}
 
                     linkedItems={linkedItemsMap.get(item.id)}
-                    onNavigateToItem={(id) => handleItemClick(id)}
+                    onNavigateToItem={handleNavigateToLinkedItem}
                         />
                       );
                     })}
@@ -965,7 +976,7 @@ export function InboxList() {
                     onRestore={() => restoreItem(item.id)}
                     isDismissedView={showDismissedOnly}
                     linkedItems={linkedItemsMap.get(item.id)}
-                    onNavigateToItem={(id) => handleItemClick(id)}
+                    onNavigateToItem={handleNavigateToLinkedItem}
                   />
                 );
               })
