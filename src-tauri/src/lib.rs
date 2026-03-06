@@ -212,29 +212,81 @@ pub async fn get_repo_lock(
 /// GUI apps launched outside a terminal (e.g., Finder/Spotlight on macOS,
 /// desktop launchers on Linux) get a minimal PATH that doesn't include
 /// directories like `~/.local/bin` or `~/.npm-global/bin` where tools such as
-/// `claude` are installed. This function sources the user's login shell to
-/// obtain the full PATH so that spawned processes can be found.
-#[cfg(unix)]
+/// `claude` are installed.
+///
+/// Strategy:
+/// 1. (Unix only) Source the user's login shell to obtain the full PATH.
+/// 2. Append well-known directories that exist on disk but aren't already on
+///    PATH. This covers shell mismatches (e.g. `$SHELL` is zsh but the user
+///    actually uses fish), Windows GUI launches, and Linux desktop launchers.
 fn fix_path_env() {
-    use std::process::Command;
+    use std::path::PathBuf;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    if let Ok(output) = Command::new(&shell)
-        .args(["-l", "-c", "printf '%s' \"$PATH\""])
-        .output()
+    // On Unix: source the user's login shell to get the full PATH
+    #[cfg(unix)]
     {
-        if output.status.success() {
-            if let Ok(path) = String::from_utf8(output.stdout) {
-                if !path.is_empty() {
-                    std::env::set_var("PATH", &path);
+        use std::process::Command;
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        if let Ok(output) = Command::new(&shell)
+            .args(["-l", "-c", "printf '%s' \"$PATH\""])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(path) = String::from_utf8(output.stdout) {
+                    if !path.is_empty() {
+                        std::env::set_var("PATH", &path);
+                    }
                 }
             }
         }
     }
-}
 
-#[cfg(not(unix))]
-fn fix_path_env() {}
+    // Append well-known directories that exist on disk but aren't on PATH.
+    let (home, separator) = {
+        #[cfg(unix)]
+        {
+            (std::env::var("HOME").unwrap_or_default(), ':')
+        }
+        #[cfg(windows)]
+        {
+            (std::env::var("USERPROFILE").unwrap_or_default(), ';')
+        }
+    };
+
+    if !home.is_empty() {
+        let mut extra: Vec<String> = vec![
+            format!("{home}/.local/bin"),
+            format!("{home}/.cargo/bin"),
+        ];
+
+        #[cfg(target_os = "macos")]
+        extra.push("/opt/homebrew/bin".into());
+
+        extra.push(if cfg!(windows) {
+            format!("{home}\\AppData\\Local\\Programs\\claude-code\\bin")
+        } else {
+            "/usr/local/bin".into()
+        });
+
+        let current = std::env::var("PATH").unwrap_or_default();
+        let existing: std::collections::HashSet<&str> =
+            current.split(separator).collect();
+
+        let missing: Vec<&str> = extra
+            .iter()
+            .map(String::as_str)
+            .filter(|d| !existing.contains(d) && PathBuf::from(d).is_dir())
+            .collect();
+
+        if !missing.is_empty() {
+            let sep = separator.to_string();
+            std::env::set_var(
+                "PATH",
+                format!("{current}{separator}{}", missing.join(&sep)),
+            );
+        }
+    }
+}
 
 async fn init_db(app: &tauri::AppHandle) -> Result<(), ossue_core::error::InitError> {
     let db = ossue_core::db::init_database().await?;
