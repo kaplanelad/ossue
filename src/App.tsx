@@ -23,6 +23,9 @@ import * as api from "@/lib/tauri";
 const MIN_CHAT_WIDTH = 200;
 const MAX_CHAT_WIDTH = 1200;
 const DEFAULT_CHAT_WIDTH = 480;
+const SIDEBAR_WIDTH = 256; // w-64
+const RESIZE_HANDLE_WIDTH = 6; // w-1.5
+const MIN_LIST_WIDTH = 280;
 
 function App() {
   const { currentPage, setCurrentPage, selectedItemId, setProjects, setItems, resolvedTheme } = useAppStore();
@@ -123,7 +126,8 @@ function App() {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
       const newWidth = window.innerWidth - e.clientX;
-      setChatWidth(Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, newWidth)));
+      const maxAllowed = Math.min(MAX_CHAT_WIDTH, window.innerWidth - SIDEBAR_WIDTH - RESIZE_HANDLE_WIDTH - MIN_LIST_WIDTH);
+      setChatWidth(Math.min(maxAllowed, Math.max(MIN_CHAT_WIDTH, newWidth)));
     };
 
     const handleMouseUp = () => {
