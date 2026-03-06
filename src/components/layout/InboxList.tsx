@@ -4,6 +4,7 @@ import { useItems } from "@/hooks/useItems";
 import { useAppStore } from "@/stores/appStore";
 import { useItemStore } from "@/stores/itemStore";
 import { useDraftIssueStore } from "@/stores/draftIssueStore";
+import { useUiStore } from "@/stores/uiStore";
 import { InboxItem } from "@/components/inbox/InboxItem";
 import { NoteItem } from "@/components/notes/NoteItem";
 import { BulkActionBar } from "@/components/inbox/BulkActionBar";
@@ -15,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   MoreVertical, RefreshCw, RotateCw, RotateCcw, Loader2, Plus, StickyNote, Search, X,
-  Star, EyeOff, Sparkles, PauseCircle, Inbox, SearchX, CircleDot, GitPullRequest, MessageCircle, Keyboard,
+  Star, EyeOff, Sparkles, PauseCircle, Inbox, SearchX, CircleDot, GitPullRequest, MessageCircle, Keyboard, FolderGit2,
+  Github, GitlabIcon, ChevronRight,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -62,7 +64,10 @@ export function InboxList() {
     focusedIndex,
     setFocusedIndex,
   } = useItemStore();
+  const { groupByRepository, setGroupByRepository } = useUiStore();
 
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const animatedGroupsRef = useRef<Set<string>>(new Set());
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -143,6 +148,26 @@ export function InboxList() {
     () => filteredItems.filter((i) => i.item_type === "note" && selectedNoteIdSet.has(i.id)),
     [filteredItems, selectedNoteIdSet]
   );
+
+  const itemIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredItems.forEach((item, i) => map.set(item.id, i));
+    return map;
+  }, [filteredItems]);
+
+  const groupedItems = useMemo(() => {
+    if (!groupByRepository) {
+      animatedGroupsRef.current.clear();
+      return null;
+    }
+    const groups = new Map<string, typeof filteredItems>();
+    for (const item of filteredItems) {
+      const key = item.project_id;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    return groups;
+  }, [filteredItems, groupByRepository]);
 
   // Range selection handler for shift+click
   const handleToggleSelectItem = useCallback(
@@ -709,6 +734,16 @@ export function InboxList() {
               <RefreshCw className="h-4 w-4" />
             )}
           </Button>
+          <Button
+            variant={groupByRepository ? "secondary" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setGroupByRepository(!groupByRepository)}
+            title="Group by repository"
+            aria-label="Group by repository"
+          >
+            <FolderGit2 className="h-4 w-4" />
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More options">
@@ -750,57 +785,143 @@ export function InboxList() {
       ) : (
       <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col">
-            {filteredItems.map((item, index) => {
-              if (item.item_type === "note") {
+            {groupByRepository && groupedItems ? (
+              Array.from(groupedItems.entries()).map(([projectId, groupItems], groupIdx) => {
+                const project = projectMap.get(projectId);
+                const isCollapsed = collapsedGroups.has(projectId);
+                const PlatformIcon = project?.platform === "gitlab" ? GitlabIcon : Github;
+                const isNew = !animatedGroupsRef.current.has(projectId);
+                if (isNew) animatedGroupsRef.current.add(projectId);
+                return (
+                  <div key={projectId} className={isNew ? "repo-group-enter" : ""} style={isNew ? { animationDelay: `${groupIdx * 40}ms` } : undefined}>
+                    <button
+                      className="sticky top-0 z-10 flex w-full items-center gap-2.5 border-b border-border/60 bg-background/80 px-4 py-2 text-left backdrop-blur-md transition-colors hover:bg-muted/40"
+                      onClick={() => setCollapsedGroups(prev => {
+                        const next = new Set(prev);
+                        if (next.has(projectId)) next.delete(projectId);
+                        else next.add(projectId);
+                        return next;
+                      })}
+                    >
+                      <ChevronRight className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`} />
+                      <PlatformIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+                      <span className="truncate text-xs" style={{ fontFamily: "'Syne', sans-serif" }}>
+                        <span className="text-muted-foreground/60">{project?.owner ?? ""}</span>
+                        <span className="text-muted-foreground/40 mx-0.5">/</span>
+                        <span className="font-semibold text-foreground/80">{project?.name ?? projectId}</span>
+                      </span>
+                      <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                        {groupItems.length}
+                      </span>
+                    </button>
+                    {!isCollapsed && groupItems.map((item) => {
+                      const globalIndex = itemIndexMap.get(item.id)!;
+                      if (item.item_type === "note") {
+                        const proj = projectMap.get(item.project_id);
+                        return (
+                          <NoteItem
+                            key={`note-${item.id}`}
+                            ref={(el: HTMLElement | null) => {
+                              if (el) itemRefs.current.set(globalIndex, el);
+                              else itemRefs.current.delete(globalIndex);
+                            }}
+                            note={item}
+                            projectLabel={proj ? `${proj.owner}/${proj.name}` : undefined}
+                            isSelected={item.id === selectedNoteId}
+                            isChecked={selectedNoteIdSet.has(item.id)}
+                            isFocused={globalIndex === focusedIndex}
+                            isGenerating={isGenerating[item.id] || false}
+                            onToggleSelect={(e: React.MouseEvent) => handleToggleSelectNote(item.id, globalIndex, e)}
+                            onClick={() => handleNoteClick(item.id)}
+                            onDelete={() => handleNoteDelete(item.id)}
+                            onGenerate={() => handleNoteGenerate(item.id)}
+                            onEdit={() => openEditNote(item)}
+                            onToggleStar={() => handleNoteToggleStar(item)}
+                          />
+                        );
+                      }
+                      const proj = projectMap.get(item.project_id);
+                      return (
+                        <InboxItem
+                          key={`item-${item.id}`}
+                          ref={(el: HTMLElement | null) => {
+                            if (el) itemRefs.current.set(globalIndex, el);
+                            else itemRefs.current.delete(globalIndex);
+                          }}
+                          item={item}
+                          repoName={proj ? `${proj.owner}/${proj.name}` : undefined}
+                          platform={proj?.platform}
+                          isSelected={item.id === selectedItemId}
+                          isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                          hasAnalysis={analyzedItemIds.has(item.id)}
+                          isChecked={selectedIdSet.has(item.id)}
+                          isFocused={globalIndex === focusedIndex}
+                          onToggleSelect={(e: React.MouseEvent) => handleToggleSelectItem(item.id, globalIndex, e)}
+                          onClick={() => handleItemClick(item.id)}
+                          onToggleStar={() => handleToggleStar(item)}
+                          onMarkUnread={() => markUnread(item.id)}
+                          onDelete={() => deleteItem(item.id)}
+                          onRestore={() => restoreItem(item.id)}
+                          isDismissedView={showDismissedOnly}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            ) : (
+              filteredItems.map((item, index) => {
+                if (item.item_type === "note") {
+                  const project = projectMap.get(item.project_id);
+                  return (
+                    <NoteItem
+                      key={`note-${item.id}`}
+                      ref={(el: HTMLElement | null) => {
+                        if (el) itemRefs.current.set(index, el);
+                        else itemRefs.current.delete(index);
+                      }}
+                      note={item}
+                      projectLabel={project ? `${project.owner}/${project.name}` : undefined}
+                      isSelected={item.id === selectedNoteId}
+                      isChecked={selectedNoteIdSet.has(item.id)}
+                      isFocused={index === focusedIndex}
+                      isGenerating={isGenerating[item.id] || false}
+                      onToggleSelect={(e: React.MouseEvent) => handleToggleSelectNote(item.id, index, e)}
+                      onClick={() => handleNoteClick(item.id)}
+                      onDelete={() => handleNoteDelete(item.id)}
+                      onGenerate={() => handleNoteGenerate(item.id)}
+                      onEdit={() => openEditNote(item)}
+                      onToggleStar={() => handleNoteToggleStar(item)}
+                    />
+                  );
+                }
                 const project = projectMap.get(item.project_id);
                 return (
-                  <NoteItem
-                    key={`note-${item.id}`}
+                  <InboxItem
+                    key={`item-${item.id}`}
                     ref={(el: HTMLElement | null) => {
                       if (el) itemRefs.current.set(index, el);
                       else itemRefs.current.delete(index);
                     }}
-                    note={item}
-                    projectLabel={project ? `${project.owner}/${project.name}` : undefined}
-                    isSelected={item.id === selectedNoteId}
-                    isChecked={selectedNoteIdSet.has(item.id)}
+                    item={item}
+                    repoName={project ? `${project.owner}/${project.name}` : undefined}
+                    platform={project?.platform}
+                    isSelected={item.id === selectedItemId}
+                    isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                    hasAnalysis={analyzedItemIds.has(item.id)}
+                    isChecked={selectedIdSet.has(item.id)}
                     isFocused={index === focusedIndex}
-                    isGenerating={isGenerating[item.id] || false}
-                    onToggleSelect={(e: React.MouseEvent) => handleToggleSelectNote(item.id, index, e)}
-                    onClick={() => handleNoteClick(item.id)}
-                    onDelete={() => handleNoteDelete(item.id)}
-                    onGenerate={() => handleNoteGenerate(item.id)}
-                    onEdit={() => openEditNote(item)}
-                    onToggleStar={() => handleNoteToggleStar(item)}
+                    onToggleSelect={(e: React.MouseEvent) => handleToggleSelectItem(item.id, index, e)}
+                    onClick={() => handleItemClick(item.id)}
+                    onToggleStar={() => handleToggleStar(item)}
+                    onMarkUnread={() => markUnread(item.id)}
+                    onDelete={() => deleteItem(item.id)}
+                    onRestore={() => restoreItem(item.id)}
+                    isDismissedView={showDismissedOnly}
                   />
                 );
-              }
-              const project = projectMap.get(item.project_id);
-              return (
-                <InboxItem
-                  key={`item-${item.id}`}
-                  ref={(el: HTMLElement | null) => {
-                    if (el) itemRefs.current.set(index, el);
-                    else itemRefs.current.delete(index);
-                  }}
-                  item={item}
-                  repoName={project ? `${project.owner}/${project.name}` : undefined}
-                  platform={project?.platform}
-                  isSelected={item.id === selectedItemId}
-                  isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
-                  hasAnalysis={analyzedItemIds.has(item.id)}
-                  isChecked={selectedIdSet.has(item.id)}
-                  isFocused={index === focusedIndex}
-                  onToggleSelect={(e: React.MouseEvent) => handleToggleSelectItem(item.id, index, e)}
-                  onClick={() => handleItemClick(item.id)}
-                  onToggleStar={() => handleToggleStar(item)}
-                  onMarkUnread={() => markUnread(item.id)}
-                  onDelete={() => deleteItem(item.id)}
-                  onRestore={() => restoreItem(item.id)}
-                  isDismissedView={showDismissedOnly}
-                />
-              );
-            })}
+              })
+            )}
             <div ref={sentinelRef} className="h-1" />
             {isLoadingMore && (
               <div className="flex items-center justify-center py-3">

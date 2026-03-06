@@ -177,6 +177,17 @@
 .dark .draft-priority-medium { color: oklch(0.828 0.189 84.429); }
 .dark .draft-priority-low { color: oklch(0.696 0.17 162.48); }
 
+/* ── Repository group animations ─────────────────────────── */
+
+@keyframes repo-group-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.repo-group-enter {
+  animation: repo-group-enter 0.25s ease-out both;
+}
+
 /* ── Onboarding animations ────────────────────────────────── */
 
 @keyframes onb-orbit {
