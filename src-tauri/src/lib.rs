@@ -37,6 +37,8 @@ impl AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    fix_path_env();
+
     let (reload_handle, log_dir) = ossue_core::logging::init_logging();
 
     // Capture panics to the log before the process exits
@@ -206,6 +208,33 @@ pub async fn get_repo_lock(
         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
         .clone()
 }
+
+/// GUI apps launched outside a terminal (e.g., Finder/Spotlight on macOS,
+/// desktop launchers on Linux) get a minimal PATH that doesn't include
+/// directories like `~/.local/bin` or `~/.npm-global/bin` where tools such as
+/// `claude` are installed. This function sources the user's login shell to
+/// obtain the full PATH so that spawned processes can be found.
+#[cfg(unix)]
+fn fix_path_env() {
+    use std::process::Command;
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    if let Ok(output) = Command::new(&shell)
+        .args(["-l", "-c", "printf '%s' \"$PATH\""])
+        .output()
+    {
+        if output.status.success() {
+            if let Ok(path) = String::from_utf8(output.stdout) {
+                if !path.is_empty() {
+                    std::env::set_var("PATH", &path);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn fix_path_env() {}
 
 async fn init_db(app: &tauri::AppHandle) -> Result<(), ossue_core::error::InitError> {
     let db = ossue_core::db::init_database().await?;
