@@ -130,29 +130,46 @@ export function InboxList() {
     return result;
   }, [items, selectedProjectIds, itemTypeFilter, showAnalyzedOnly, analyzedItemIds, showStarredOnly]);
 
-  // Compute which items have linked PR/issue references
-  const linkedItemIds = useMemo(() => {
-    const ids = new Set<string>();
-    const byProjectAndNumber = new Map<string, Set<number>>();
-    // Collect all issue numbers referenced by PRs
+  // Compute linked items map: itemId → linked Item[]
+  const linkedItemsMap = useMemo(() => {
+    const map = new Map<string, typeof filteredItems>();
+    // Index: projectId → externalId → Item
+    const byProjectAndNumber = new Map<string, Map<number, typeof filteredItems[0]>>();
+    // Index: projectId → [PR items with refs]
+    const prsByProject = new Map<string, { pr: typeof filteredItems[0]; refs: number[] }[]>();
+
     for (const item of filteredItems) {
+      if (item.type_data.kind === "note") continue;
+      const key = item.project_id;
+      if (!byProjectAndNumber.has(key)) byProjectAndNumber.set(key, new Map());
+      byProjectAndNumber.get(key)!.set(item.type_data.external_id, item);
+
       if (item.item_type === "pr" && item.body) {
         const refs = extractLinkedIssueNumbers(item.body);
         if (refs.length > 0) {
-          ids.add(item.id);
-          if (!byProjectAndNumber.has(item.project_id)) byProjectAndNumber.set(item.project_id, new Set());
-          for (const n of refs) byProjectAndNumber.get(item.project_id)!.add(n);
+          if (!prsByProject.has(key)) prsByProject.set(key, []);
+          prsByProject.get(key)!.push({ pr: item, refs });
         }
       }
     }
-    // Mark issues that are referenced
-    for (const item of filteredItems) {
-      if (item.item_type === "issue" && item.type_data.kind !== "note") {
-        const nums = byProjectAndNumber.get(item.project_id);
-        if (nums?.has(item.type_data.external_id)) ids.add(item.id);
+
+    // PR → linked issues
+    for (const [projId, prs] of prsByProject) {
+      const numIndex = byProjectAndNumber.get(projId);
+      if (!numIndex) continue;
+      for (const { pr, refs } of prs) {
+        const linked = refs.map((n) => numIndex.get(n)).filter((i): i is typeof filteredItems[0] => !!i && i.id !== pr.id);
+        if (linked.length > 0) map.set(pr.id, linked);
+        // Issue → linking PRs (reverse)
+        for (const issue of linked) {
+          const existing = map.get(issue.id) ?? [];
+          if (!existing.some((i) => i.id === pr.id)) {
+            map.set(issue.id, [...existing, pr]);
+          }
+        }
       }
     }
-    return ids;
+    return map;
   }, [filteredItems]);
 
   const selectedIdSet = useMemo(
@@ -889,7 +906,9 @@ export function InboxList() {
                           onDelete={() => deleteItem(item.id)}
                           onRestore={() => restoreItem(item.id)}
                           isDismissedView={showDismissedOnly}
-                          hasLinkedItems={linkedItemIds.has(item.id)}
+
+                    linkedItems={linkedItemsMap.get(item.id)}
+                    onNavigateToItem={(id) => handleItemClick(id)}
                         />
                       );
                     })}
@@ -945,7 +964,8 @@ export function InboxList() {
                     onDelete={() => deleteItem(item.id)}
                     onRestore={() => restoreItem(item.id)}
                     isDismissedView={showDismissedOnly}
-                    hasLinkedItems={linkedItemIds.has(item.id)}
+                    linkedItems={linkedItemsMap.get(item.id)}
+                    onNavigateToItem={(id) => handleItemClick(id)}
                   />
                 );
               })
