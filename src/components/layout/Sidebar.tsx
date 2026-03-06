@@ -87,6 +87,13 @@ export function Sidebar() {
   }, [items, selectedProjectIds, itemTypeFilter]);
 
   const noteCount = draftNoteCount;
+  const projectFilteredItems = useMemo(() => {
+    if (selectedProjectIds.length === 0) return items;
+    const selected = new Set(selectedProjectIds);
+    return items.filter((i) => selected.has(i.project_id));
+  }, [items, selectedProjectIds]);
+  const issueCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "issue").length, [projectFilteredItems]);
+  const prCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "pr").length, [projectFilteredItems]);
   const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
   const analyzedCount = useMemo(() => {
     const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));
@@ -137,6 +144,16 @@ export function Sidebar() {
               {f.value === "note" && noteCount > 0 && (
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/15 dark:bg-amber-400/15 px-1 text-[10px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
                   {noteCount}
+                </span>
+              )}
+              {f.value === "issue" && issueCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-purple-500/15 dark:bg-purple-400/15 px-1 text-[10px] font-semibold tabular-nums text-purple-600 dark:text-purple-400">
+                  {issueCount}
+                </span>
+              )}
+              {f.value === "pr" && prCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500/15 dark:bg-blue-400/15 px-1 text-[10px] font-semibold tabular-nums text-blue-600 dark:text-blue-400">
+                  {prCount}
                 </span>
               )}
             </Button>
