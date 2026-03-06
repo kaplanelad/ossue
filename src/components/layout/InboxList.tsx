@@ -25,6 +25,15 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
 import type { AnalysisAction } from "@/types";
@@ -55,6 +64,7 @@ export function InboxList() {
   } = useItemStore();
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [isSearchOpen, setIsSearchOpen] = useState(searchQuery.length > 0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -444,6 +454,25 @@ export function InboxList() {
     }
   };
 
+  const handleBulkNotePublish = async () => {
+    const readyNotes = selectedNotes.filter((n) => n.type_data.kind === "note" && n.type_data.draft_status === "ready");
+    clearNoteSelection();
+
+    let successCount = 0;
+    for (const note of readyNotes) {
+      try {
+        await api.submitDraftToProvider(note.id);
+        successCount++;
+      } catch (err) {
+        toast.error(`Failed to publish note`, { description: errorMessage(err) });
+      }
+    }
+    if (successCount > 0) {
+      toast.success(`Published ${successCount} issue${successCount > 1 ? "s" : ""}`);
+    }
+    await refreshInbox();
+  };
+
   const handleCreateNote = () => {
     if (selectedProjectIds.length === 1) {
       openCreateNote(selectedProjectIds[0]);
@@ -820,12 +849,31 @@ export function InboxList() {
         <NoteBulkActionBar
           selectedNotes={selectedNotes}
           onGenerateIssue={handleBulkNoteGenerate}
+          onPublish={() => setPublishConfirmOpen(true)}
           onDelete={handleBulkNoteDelete}
           onClearSelection={clearNoteSelection}
         />
       )}
       <CreateNoteDialog />
       <KeyboardShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Publish Notes as Issues</DialogTitle>
+            <DialogDescription>
+              This will create {selectedNotes.filter((n) => n.type_data.kind === "note" && n.type_data.draft_status === "ready").length} issue{selectedNotes.filter((n) => n.type_data.kind === "note" && n.type_data.draft_status === "ready").length !== 1 ? "s" : ""} on the respective repositories. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={() => { setPublishConfirmOpen(false); handleBulkNotePublish(); }}>
+              Publish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
