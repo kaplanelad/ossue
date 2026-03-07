@@ -4,11 +4,13 @@ import { errorMessage } from "@/lib/utils";
 import { useChatStore } from "@/stores/chatStore";
 import { useAppStore } from "@/stores/appStore";
 import * as api from "@/lib/tauri";
-import type { AnalysisAction } from "@/types";
+import type { AnalysisAction, ChatMessage } from "@/types";
+
+const EMPTY_MESSAGES: ChatMessage[] = [];
 
 export function useChat(itemId: string | null) {
-  const { messages, isLoading, setMessages, addMessage, setIsLoading, clearChat } =
-    useChatStore();
+  const messages = useChatStore((s) => s.messagesByItem[itemId ?? ""] ?? EMPTY_MESSAGES);
+  const isLoading = useChatStore((s) => s.loadingItems[itemId ?? ""] ?? false);
 
   const analysis = useAppStore(
     (s) => (itemId ? s.activeAnalyses[itemId] : undefined)
@@ -24,37 +26,32 @@ export function useChat(itemId: string | null) {
 
   // Load chat history when item changes
   useEffect(() => {
-    if (!itemId) {
-      clearChat();
-      return;
-    }
+    if (!itemId) return;
+
+    // Skip DB reload if messages already cached
+    if (useChatStore.getState().messagesByItem[itemId] !== undefined) return;
 
     const loadMessages = async () => {
-      setIsLoading(true);
+      useChatStore.getState().setIsLoading(itemId, true);
       try {
         const msgs = await api.getChatMessages(itemId);
-        // Only update if this item is still selected
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setMessages(msgs);
-        }
+        useChatStore.getState().setMessages(itemId, msgs);
       } catch (err) {
         console.error("Failed to load chat messages:", err);
       } finally {
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setIsLoading(false);
-        }
+        useChatStore.getState().setIsLoading(itemId, false);
       }
     };
 
     loadMessages();
-  }, [itemId, clearChat, setIsLoading, setMessages]);
+  }, [itemId]);
 
   const sendMessage = useCallback(
     async (message: string) => {
       if (!itemId) return;
 
       // Optimistically show user message immediately
-      addMessage({
+      useChatStore.getState().addMessage(itemId, {
         id: `temp-${Date.now()}`,
         item_id: itemId,
         role: "user",
@@ -65,39 +62,33 @@ export function useChat(itemId: string | null) {
         model: null,
       });
 
-      setIsLoading(true);
+      useChatStore.getState().setIsLoading(itemId, true);
       startAnalysis(itemId);
       try {
         await api.sendChatMessage(itemId, message);
         const msgs = await api.getChatMessages(itemId);
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setMessages(msgs);
-        }
+        useChatStore.getState().setMessages(itemId, msgs);
         clearAnalysis(itemId);
       } catch (err) {
         console.error("Failed to send message:", err);
         toast.error(errorMessage(err));
         clearAnalysis(itemId);
       } finally {
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setIsLoading(false);
-        }
+        useChatStore.getState().setIsLoading(itemId, false);
       }
     },
-    [itemId, addMessage, setIsLoading, setMessages, startAnalysis, clearAnalysis]
+    [itemId, startAnalysis, clearAnalysis]
   );
 
   const analyzeItem = useCallback(async () => {
     if (!itemId) return;
 
-    setIsLoading(true);
+    useChatStore.getState().setIsLoading(itemId, true);
     startAnalysis(itemId);
     try {
       await api.autoAnalyzeItem(itemId);
       const msgs = await api.getChatMessages(itemId);
-      if (useAppStore.getState().selectedItemId === itemId) {
-        setMessages(msgs);
-      }
+      useChatStore.getState().setMessages(itemId, msgs);
       clearAnalysis(itemId);
     } catch (err) {
       if (errorMessage(err) !== "Already analyzed") {
@@ -106,26 +97,22 @@ export function useChat(itemId: string | null) {
       }
       clearAnalysis(itemId);
     } finally {
-      if (useAppStore.getState().selectedItemId === itemId) {
-        setIsLoading(false);
-      }
+      useChatStore.getState().setIsLoading(itemId, false);
     }
-  }, [itemId, setIsLoading, setMessages, startAnalysis, clearAnalysis]);
+  }, [itemId, startAnalysis, clearAnalysis]);
 
   const analyzeWithAction = useCallback(
     async (action: AnalysisAction) => {
       if (!itemId) return;
 
-      setIsLoading(true);
+      useChatStore.getState().setIsLoading(itemId, true);
       startAnalysis(itemId);
       try {
         // Messages arrive incrementally via events during the command execution
         await api.analyzeItemAction({ item_id: itemId, action });
         // Reload from DB for consistency (catches any missed events)
         const msgs = await api.getChatMessages(itemId);
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setMessages(msgs);
-        }
+        useChatStore.getState().setMessages(itemId, msgs);
         // For multi-step analyze, endAnalysis is handled by "ai-analysis-complete" event.
         // For single-step draft_response, clear here.
         if (action !== "analyze") {
@@ -136,12 +123,10 @@ export function useChat(itemId: string | null) {
         toast.error(errorMessage(err));
         clearAnalysis(itemId);
       } finally {
-        if (useAppStore.getState().selectedItemId === itemId) {
-          setIsLoading(false);
-        }
+        useChatStore.getState().setIsLoading(itemId, false);
       }
     },
-    [itemId, setIsLoading, setMessages, startAnalysis, clearAnalysis]
+    [itemId, startAnalysis, clearAnalysis]
   );
 
   const removeAnalyzedItemId = useAppStore((s) => s.removeAnalyzedItemId);
@@ -149,10 +134,10 @@ export function useChat(itemId: string | null) {
   const clearMessages = useCallback(async () => {
     if (!itemId) return;
     await api.clearChat(itemId);
-    clearChat();
+    useChatStore.getState().clearChat(itemId);
     clearAnalysis(itemId);
     removeAnalyzedItemId(itemId);
-  }, [itemId, clearChat, clearAnalysis, removeAnalyzedItemId]);
+  }, [itemId, clearAnalysis, removeAnalyzedItemId]);
 
   return {
     messages,

@@ -313,9 +313,7 @@ export function InboxList() {
       await api.clearChat(itemId);
       removeAnalyzedItemId(itemId);
       clearAnalysis(itemId);
-      if (selectedItemId === itemId) {
-        useChatStore.getState().clearChat();
-      }
+      useChatStore.getState().clearChat(itemId);
     } catch (err) {
       toast.error("Failed to clear AI history", { description: errorMessage(err) });
     }
