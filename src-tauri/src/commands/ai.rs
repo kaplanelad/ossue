@@ -977,8 +977,7 @@ pub async fn analyze_item_action(
                 item_context.pr_diff.as_deref(),
             );
 
-            let system_prompt =
-                ContextService::build_multi_step_system_prompt(&ctx.item.item_type);
+            let system_prompt = ContextService::build_multi_step_system_prompt(&ctx.item.item_type);
             let mut conversation_text = format!("System: {}\n\n", system_prompt);
             let mut last_saved: Option<ChatMessageResponse> = None;
 
@@ -1066,8 +1065,7 @@ pub async fn analyze_item_action(
                 }
 
                 let response_content = String::from_utf8_lossy(&output.stdout).to_string();
-                conversation_text
-                    .push_str(&format!("Assistant: {}\n\n", response_content));
+                conversation_text.push_str(&format!("Assistant: {}\n\n", response_content));
 
                 // Save assistant message
                 let assistant_msg_id = Uuid::new_v4().to_string();
@@ -1514,10 +1512,9 @@ async fn stream_llm_response(
                                     if data == "[DONE]" {
                                         continue;
                                     }
-                                    if let Ok(event) =
-                                        serde_json::from_str::<
-                                            ossue_core::services::ai_api::StreamEvent,
-                                        >(data)
+                                    if let Ok(event) = serde_json::from_str::<
+                                        ossue_core::services::ai_api::StreamEvent,
+                                    >(data)
                                     {
                                         match event {
                                             ossue_core::services::ai_api::StreamEvent::MessageStart { message } => {
