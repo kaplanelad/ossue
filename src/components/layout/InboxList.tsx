@@ -935,7 +935,7 @@ export function InboxList() {
                           repoName={proj ? `${proj.owner}/${proj.name}` : undefined}
                           platform={proj?.platform}
                           isSelected={item.id === selectedItemId}
-                          isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                          isAnalyzing={!!activeAnalyses[item.id]}
                           hasAnalysis={analyzedItemIds.has(item.id)}
                           isChecked={selectedIdSet.has(item.id)}
                           isFocused={globalIndex === focusedIndex}
@@ -994,7 +994,7 @@ export function InboxList() {
                     repoName={project ? `${project.owner}/${project.name}` : undefined}
                     platform={project?.platform}
                     isSelected={item.id === selectedItemId}
-                    isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                    isAnalyzing={!!activeAnalyses[item.id]}
                     hasAnalysis={analyzedItemIds.has(item.id)}
                     isChecked={selectedIdSet.has(item.id)}
                     isFocused={index === focusedIndex}
