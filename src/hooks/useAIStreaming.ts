@@ -58,10 +58,7 @@ export function useAIStreaming() {
             event.payload.item_id,
             event.payload.message.content
           );
-          // Only add if the currently selected item matches
-          if (store().selectedItemId === event.payload.item_id) {
-            chatStore().addMessage(event.payload.message);
-          }
+          chatStore().addMessage(event.payload.item_id, event.payload.message);
         }
       )
     );
@@ -70,9 +67,7 @@ export function useAIStreaming() {
       listen<{ item_id: string; message: ChatMessage }>(
         "ai-step-assistant-message",
         (event) => {
-          if (store().selectedItemId === event.payload.item_id) {
-            chatStore().addMessage(event.payload.message);
-          }
+          chatStore().addMessage(event.payload.item_id, event.payload.message);
         }
       )
     );

@@ -2,20 +2,35 @@ import { create } from "zustand";
 import type { ChatMessage } from "@/types";
 
 interface ChatState {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  setMessages: (messages: ChatMessage[]) => void;
-  addMessage: (message: ChatMessage) => void;
-  setIsLoading: (loading: boolean) => void;
-  clearChat: () => void;
+  messagesByItem: Record<string, ChatMessage[]>;
+  loadingItems: Record<string, boolean>;
+  setMessages: (itemId: string, messages: ChatMessage[]) => void;
+  addMessage: (itemId: string, message: ChatMessage) => void;
+  setIsLoading: (itemId: string, loading: boolean) => void;
+  clearChat: (itemId: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
-  messages: [],
-  isLoading: false,
-  setMessages: (messages) => set({ messages }),
-  addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
-  setIsLoading: (loading) => set({ isLoading: loading }),
-  clearChat: () => set({ messages: [] }),
+  messagesByItem: {},
+  loadingItems: {},
+  setMessages: (itemId, messages) =>
+    set((state) => ({
+      messagesByItem: { ...state.messagesByItem, [itemId]: messages },
+    })),
+  addMessage: (itemId, message) =>
+    set((state) => ({
+      messagesByItem: {
+        ...state.messagesByItem,
+        [itemId]: [...(state.messagesByItem[itemId] ?? []), message],
+      },
+    })),
+  setIsLoading: (itemId, loading) =>
+    set((state) => ({
+      loadingItems: { ...state.loadingItems, [itemId]: loading },
+    })),
+  clearChat: (itemId) =>
+    set((state) => {
+      const { [itemId]: _, ...rest } = state.messagesByItem;
+      return { messagesByItem: rest };
+    }),
 }));
