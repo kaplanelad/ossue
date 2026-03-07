@@ -147,7 +147,7 @@ export function CreateNoteDialog() {
       setMode((m) => (m === "note" ? "issue" : "note"));
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && e.metaKey) {
       e.preventDefault();
       if (isEditing) {
         handleSave();
@@ -228,7 +228,7 @@ export function CreateNoteDialog() {
               className="draft-textarea resize-y min-h-[140px] text-[13.5px] leading-relaxed"
             />
             <p className="text-[11px] text-muted-foreground/60">
-              Enter to {isEditing ? "save" : mode === "issue" ? "save & analyze" : "save as draft"} · Shift+Enter for new line{!isEditing && " · Shift+Tab to switch mode"}
+              ⌘+Enter to {isEditing ? "save" : mode === "issue" ? "save & analyze" : "save as draft"}{!isEditing && " · Shift+Tab to switch mode"}
             </p>
           </div>
 
