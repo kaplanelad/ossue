@@ -112,8 +112,7 @@ impl AnalysisContext {
         let response_tone = proj_setting("ai_response_tone").or(global_response_tone);
 
         // 8. Get GitHub base URL for API calls
-        let github_base_url =
-            ossue_core::services::auth::get_project_base_url(db, &project).await;
+        let github_base_url = ossue_core::services::auth::get_project_base_url(db, &project).await;
 
         Ok(Self {
             item,
