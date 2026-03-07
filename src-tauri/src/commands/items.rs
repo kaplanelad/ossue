@@ -100,7 +100,14 @@ pub async fn list_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts, item_type_counts, starred_counts, analyzed_counts, draft_note_counts) = tokio::try_join!(
+    let (
+        page,
+        dismissed_counts,
+        item_type_counts,
+        starred_counts,
+        analyzed_counts,
+        draft_note_counts,
+    ) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
@@ -337,7 +344,14 @@ pub async fn list_dismissed_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing dismissed items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts, item_type_counts, starred_counts, analyzed_counts, draft_note_counts) = tokio::try_join!(
+    let (
+        page,
+        dismissed_counts,
+        item_type_counts,
+        starred_counts,
+        analyzed_counts,
+        draft_note_counts,
+    ) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
