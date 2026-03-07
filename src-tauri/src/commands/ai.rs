@@ -31,6 +31,7 @@ struct AnalysisContext {
     focus_areas_raw: Option<String>,
     review_strictness: Option<String>,
     response_tone: Option<String>,
+    github_base_url: Option<String>,
 }
 
 impl AnalysisContext {
@@ -110,6 +111,9 @@ impl AnalysisContext {
         let review_strictness = proj_setting("ai_review_strictness").or(global_review_strictness);
         let response_tone = proj_setting("ai_response_tone").or(global_response_tone);
 
+        // 8. Get GitHub base URL for API calls
+        let github_base_url = ossue_core::services::auth::get_project_base_url(db, &project).await;
+
         Ok(Self {
             item,
             project,
@@ -121,6 +125,7 @@ impl AnalysisContext {
             focus_areas_raw,
             review_strictness,
             response_tone,
+            github_base_url,
         })
     }
 
@@ -159,6 +164,56 @@ impl AnalysisContext {
         }
 
         system_prompt
+    }
+
+    /// Build an item context block to append to the system prompt.
+    /// When `fresh_diff` is provided it takes precedence over the DB-cached diff.
+    fn build_item_context_block(&self, fresh_diff: Option<&str>) -> String {
+        let td = match self.item.parse_type_data() {
+            Ok(td) => td,
+            Err(_) => return String::new(),
+        };
+
+        let mut sections = Vec::new();
+
+        sections.push(format!(
+            "## Item Context\n\
+             - **Type:** {}\n\
+             - **Title:** {}\n\
+             - **Author:** {}\n\
+             - **State:** {}\n\
+             - **URL:** {}",
+            self.item.item_type,
+            self.item.title,
+            td.author().unwrap_or(""),
+            td.state().map(|s| format!("{s:?}")).unwrap_or_default(),
+            td.url().unwrap_or(""),
+        ));
+
+        if !self.item.body.is_empty() {
+            sections.push(format!("## Description\n{}", self.item.body));
+        }
+
+        // Use fresh diff if provided, otherwise fall back to DB-cached diff
+        #[allow(clippy::unnecessary_lazy_evaluations)]
+        let diff_to_use = fresh_diff.or_else(|| {
+            if let ossue_core::enums::ItemTypeData::Pr(ref pr) = td {
+                pr.pr_diff.as_deref()
+            } else {
+                None
+            }
+        });
+        if let Some(diff) = diff_to_use {
+            if !diff.is_empty() {
+                sections.push(format!("## Diff\n```diff\n{}\n```", diff));
+            }
+        }
+
+        if sections.is_empty() {
+            String::new()
+        } else {
+            format!("\n\n{}", sections.join("\n\n"))
+        }
     }
 
     /// Parse focus_areas_raw into a Vec<String>. Used by analyze_item_action
@@ -316,8 +371,71 @@ pub async fn send_chat_message(
 
     tracing::debug!(item_id = %item_id, message_count = api_messages.len(), ai_mode = %ctx.ai_mode, "Conversation history prepared");
 
-    // Build system prompt with user preferences
-    let system_prompt = ctx.build_system_prompt(&action_type);
+    // Parse type data once for diff fetching and worktree setup
+    let td = ctx.item.parse_type_data().ok();
+
+    // Fetch fresh PR/MR diff from platform API
+    let fresh_diff = if ctx.item.item_type == ossue_core::enums::ItemType::PullRequest {
+        let cached_diff = match &td {
+            Some(ossue_core::enums::ItemTypeData::Pr(pr)) => pr.pr_diff.clone(),
+            _ => None,
+        };
+        let ext_id = td.as_ref().and_then(|t| t.external_id());
+        if let Some(ext_id) = ext_id {
+            match ctx.project.platform {
+                ossue_core::enums::Platform::GitHub => {
+                    let client = ossue_core::services::github::GitHubClient::with_base_url(
+                        ctx.token.clone(),
+                        ctx.github_base_url.clone(),
+                    );
+                    match client
+                        .get_pr_diff(&ctx.project.owner, &ctx.project.name, ext_id)
+                        .await
+                    {
+                        Ok(diff) => Some(truncate_diff(diff)),
+                        Err(e) => {
+                            tracing::warn!(error = %e, item_id = %item_id, "Failed to fetch fresh PR diff for chat, falling back to cached");
+                            cached_diff
+                        }
+                    }
+                }
+                ossue_core::enums::Platform::GitLab => {
+                    if let Some(project_id) = ctx.project.external_project_id {
+                        let client = ossue_core::services::gitlab::GitLabClient::new(
+                            ctx.token.clone(),
+                            ctx.github_base_url.clone(),
+                        );
+                        match client.get_mr_diff(project_id, ext_id).await {
+                            Ok(diff) => Some(truncate_diff(diff)),
+                            Err(e) => {
+                                tracing::warn!(error = %e, item_id = %item_id, "Failed to fetch fresh MR diff for chat, falling back to cached");
+                                cached_diff
+                            }
+                        }
+                    } else {
+                        cached_diff
+                    }
+                }
+            }
+        } else {
+            cached_diff
+        }
+    } else {
+        None
+    };
+
+    // Build system prompt with user preferences and item context so the LLM
+    // always knows which PR/issue is being discussed, even without prior analysis.
+    let mut system_prompt = ctx.build_system_prompt(&action_type);
+    system_prompt.push_str(&ctx.build_item_context_block(fresh_diff.as_deref()));
+
+    // Determine PR number and default branch for correct worktree checkout
+    let pr_number = if ctx.item.item_type == ossue_core::enums::ItemType::PullRequest {
+        td.as_ref().and_then(|t| t.external_id())
+    } else {
+        None
+    };
+    let default_branch = ctx.project.default_branch.clone();
 
     // Prepare repo path for CLI mode - force-fetch and create worktree for fresh context
     let (repo_path, chat_worktree): (
@@ -350,12 +468,13 @@ pub async fn send_chat_message(
                 let wt_path = path.clone();
                 let wt_item_type = ctx.item.item_type.clone();
                 let wt_token = ctx.token.clone();
+                let wt_db = default_branch.clone();
                 let wt_result = tokio::task::spawn_blocking(move || {
                     RepoManager::create_analysis_worktree(
                         &wt_path,
                         &wt_item_type,
-                        None,
-                        None,
+                        pr_number,
+                        wt_db.as_deref(),
                         &wt_token,
                     )
                 })
@@ -580,14 +699,7 @@ pub async fn auto_analyze_item(
                         .get_pr_diff(&project.owner, &project.name, ext_id)
                         .await
                     {
-                        Ok(diff) => {
-                            let truncated = if diff.len() > 200_000 {
-                                diff[..200_000].to_string()
-                            } else {
-                                diff
-                            };
-                            Some(truncated)
-                        }
+                        Ok(diff) => Some(truncate_diff(diff)),
                         Err(e) => {
                             tracing::warn!(error = %e, item_id = %item_id, "Failed to fetch fresh PR diff, falling back to cached");
                             cached_diff
@@ -595,8 +707,21 @@ pub async fn auto_analyze_item(
                     }
                 }
                 Platform::GitLab => {
-                    // GitLab doesn't have a diff endpoint; use cached if available
-                    cached_diff
+                    if let Some(project_id) = project.external_project_id {
+                        let client = ossue_core::services::gitlab::GitLabClient::new(
+                            token.clone(),
+                            github_base_url.clone(),
+                        );
+                        match client.get_mr_diff(project_id, ext_id).await {
+                            Ok(diff) => Some(truncate_diff(diff)),
+                            Err(e) => {
+                                tracing::warn!(error = %e, item_id = %item_id, "Failed to fetch fresh MR diff, falling back to cached");
+                                cached_diff
+                            }
+                        }
+                    } else {
+                        cached_diff
+                    }
                 }
             }
         } else {
@@ -1586,6 +1711,16 @@ const MAX_CHAT_MESSAGES: usize = 30;
 /// Keeps the first message (original analysis prompt) and the most recent
 /// messages within the character and message count budgets.
 /// Preserves user/assistant alternation.
+/// Truncate a diff string to at most `MAX_DIFF_CHARS` characters, safely
+/// handling multi-byte UTF-8 boundaries.
+const MAX_DIFF_CHARS: usize = 200_000;
+fn truncate_diff(diff: String) -> String {
+    if diff.len() <= MAX_DIFF_CHARS {
+        return diff;
+    }
+    diff.chars().take(MAX_DIFF_CHARS).collect()
+}
+
 fn truncate_chat_history(messages: Vec<ApiMessage>) -> Vec<ApiMessage> {
     if messages.len() <= MAX_CHAT_MESSAGES {
         let total_chars: usize = messages.iter().map(|m| m.content.len()).sum();
