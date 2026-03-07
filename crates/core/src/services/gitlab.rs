@@ -97,6 +97,35 @@ pub struct GitLabCommit {
     pub created_at: String,
 }
 
+#[derive(Deserialize)]
+struct MrChange {
+    old_path: String,
+    new_path: String,
+    diff: String,
+}
+
+#[derive(Deserialize)]
+struct MrChangesResponse {
+    changes: Vec<MrChange>,
+}
+
+/// Parse a GitLab MR changes JSON response into a unified diff string.
+fn parse_mr_changes_to_diff(body: &str) -> std::result::Result<String, serde_json::Error> {
+    let mr_changes: MrChangesResponse = serde_json::from_str(body)?;
+    let mut diff = String::new();
+    for change in &mr_changes.changes {
+        diff.push_str(&format!(
+            "diff --git a/{} b/{}\n",
+            change.old_path, change.new_path
+        ));
+        diff.push_str(&change.diff);
+        if !change.diff.ends_with('\n') {
+            diff.push('\n');
+        }
+    }
+    Ok(diff)
+}
+
 impl GitLabClient {
     pub fn new(token: String, base_url: Option<String>) -> Self {
         let client = reqwest::Client::builder()
@@ -625,6 +654,59 @@ impl GitLabClient {
         );
         Ok(commits)
     }
+    /// Fetch the unified diff for a GitLab merge request.
+    ///
+    /// Uses the `/merge_requests/:iid/changes` endpoint and assembles a unified
+    /// diff string from the individual file diffs returned in the `changes` array.
+    pub async fn get_mr_diff(&self, project_id: i64, mr_iid: i32) -> Result<String> {
+        let project_id_str = project_id.to_string();
+        let mr_iid_str = mr_iid.to_string();
+
+        tracing::debug!(project_id = project_id, mr_iid = mr_iid, "Fetching MR diff");
+
+        let description = format!("GitLab MR diff for project {project_id} MR {mr_iid}");
+        let response = crate::services::http::fetch_with_retry(&description, 3, || {
+            self.client
+                .get(format!(
+                    "{}/api/v4/projects/{project_id_str}/merge_requests/{mr_iid_str}/changes",
+                    self.base_url
+                ))
+                .header("PRIVATE-TOKEN", &self.token)
+                .send()
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, project_id = project_id, mr_iid = mr_iid, "Failed to fetch MR diff");
+            Error::Api(e.to_string())
+        })?;
+
+        let body = response
+            .error_for_status()
+            .inspect_err(|e| {
+                tracing::error!(status = ?e.status(), project_id = project_id, mr_iid = mr_iid, "GitLab API error fetching MR diff");
+            })?
+            .text()
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, project_id = project_id, mr_iid = mr_iid, "Failed to read MR diff response body");
+                e
+            })?;
+
+        let diff = parse_mr_changes_to_diff(&body).map_err(|e| {
+            tracing::error!(error = %e, body_preview = %&body[..body.len().min(200)], project_id = project_id, mr_iid = mr_iid, "Failed to decode MR changes");
+            Error::Decode(e)
+        })?;
+
+        tracing::debug!(
+            project_id = project_id,
+            mr_iid = mr_iid,
+            diff_len = diff.len(),
+            "Fetched GitLab MR diff"
+        );
+
+        Ok(diff)
+    }
+
     pub async fn post_comment(
         &self,
         project_id: i64,
@@ -814,5 +896,96 @@ impl IssueCreator for GitLabClient {
             number: parsed.iid,
             url: parsed.web_url,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_mr_changes_single_file() {
+        let json = r#"{
+            "changes": [
+                {
+                    "old_path": "src/main.rs",
+                    "new_path": "src/main.rs",
+                    "diff": "@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n"
+                }
+            ]
+        }"#;
+
+        let diff = parse_mr_changes_to_diff(json).unwrap();
+        assert!(diff.starts_with("diff --git a/src/main.rs b/src/main.rs\n"));
+        assert!(diff.contains("println!(\"hello\")"));
+    }
+
+    #[test]
+    fn parse_mr_changes_multiple_files() {
+        let json = r#"{
+            "changes": [
+                {
+                    "old_path": "a.rs",
+                    "new_path": "a.rs",
+                    "diff": "+line1\n"
+                },
+                {
+                    "old_path": "b.rs",
+                    "new_path": "b.rs",
+                    "diff": "+line2\n"
+                }
+            ]
+        }"#;
+
+        let diff = parse_mr_changes_to_diff(json).unwrap();
+        assert!(diff.contains("diff --git a/a.rs b/a.rs\n"));
+        assert!(diff.contains("diff --git a/b.rs b/b.rs\n"));
+        assert!(diff.contains("+line1"));
+        assert!(diff.contains("+line2"));
+    }
+
+    #[test]
+    fn parse_mr_changes_empty() {
+        let json = r#"{"changes": []}"#;
+        let diff = parse_mr_changes_to_diff(json).unwrap();
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn parse_mr_changes_appends_trailing_newline_when_missing() {
+        let json = r#"{
+            "changes": [
+                {
+                    "old_path": "file.txt",
+                    "new_path": "file.txt",
+                    "diff": "+no trailing newline"
+                }
+            ]
+        }"#;
+
+        let diff = parse_mr_changes_to_diff(json).unwrap();
+        assert!(diff.ends_with('\n'));
+    }
+
+    #[test]
+    fn parse_mr_changes_renamed_file() {
+        let json = r#"{
+            "changes": [
+                {
+                    "old_path": "old_name.rs",
+                    "new_path": "new_name.rs",
+                    "diff": "@@ -0,0 +0,0 @@\n"
+                }
+            ]
+        }"#;
+
+        let diff = parse_mr_changes_to_diff(json).unwrap();
+        assert!(diff.contains("diff --git a/old_name.rs b/new_name.rs\n"));
+    }
+
+    #[test]
+    fn parse_mr_changes_invalid_json() {
+        let result = parse_mr_changes_to_diff("not json");
+        assert!(result.is_err());
     }
 }

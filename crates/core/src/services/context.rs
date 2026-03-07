@@ -295,6 +295,7 @@ impl ContextService {
     ) -> ItemContext {
         let mut comments: Vec<ContextComment> = Vec::new();
         let mut commits: Vec<ContextCommit> = Vec::new();
+        let mut pr_diff: Option<String> = None;
 
         match item_type {
             ItemType::Issue => {
@@ -352,6 +353,38 @@ impl ContextService {
                         "Failed to fetch GitLab MR commits for context"
                     );
                 }
+
+                // MR diff
+                tracing::debug!(
+                    project_id = project_id,
+                    mr_iid = external_id,
+                    "Fetching MR diff"
+                );
+                match client.get_mr_diff(project_id, external_id).await {
+                    Ok(diff) => {
+                        const MAX_DIFF_CHARS: usize = 200_000;
+                        if diff.len() > MAX_DIFF_CHARS {
+                            tracing::warn!(
+                                project_id = project_id,
+                                mr_iid = external_id,
+                                original_len = diff.len(),
+                                "Truncating large MR diff to {} chars",
+                                MAX_DIFF_CHARS
+                            );
+                            pr_diff = Some(diff.chars().take(MAX_DIFF_CHARS).collect());
+                        } else {
+                            pr_diff = Some(diff);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            project_id = project_id,
+                            external_id = external_id,
+                            error = %e,
+                            "Failed to fetch MR diff, continuing without it"
+                        );
+                    }
+                }
             }
             ItemType::Discussion | ItemType::Note => {
                 // GitLab discussions and notes don't have a separate notes endpoint.
@@ -389,7 +422,7 @@ impl ContextService {
             focus_areas: Vec::new(),
             review_strictness: None,
             response_tone: None,
-            pr_diff: None,
+            pr_diff,
         }
     }
 
