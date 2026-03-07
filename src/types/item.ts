@@ -62,6 +62,7 @@ export interface DismissedCount {
 }
 
 export interface ItemTypeCount {
+  project_id: string;
   item_type: string;
   count: number;
 }
@@ -72,4 +73,7 @@ export interface ItemPageResponse {
   has_more: boolean;
   dismissed_counts: DismissedCount[];
   item_type_counts: ItemTypeCount[];
+  starred_counts: ItemTypeCount[];
+  analyzed_counts: ItemTypeCount[];
+  draft_note_counts: ItemTypeCount[];
 }

@@ -82,6 +82,9 @@ pub struct ItemPageResponse {
     pub has_more: bool,
     pub dismissed_counts: Vec<ossue_core::queries::DismissedCount>,
     pub item_type_counts: Vec<ossue_core::queries::ItemTypeCount>,
+    pub starred_counts: Vec<ossue_core::queries::ItemTypeCount>,
+    pub analyzed_counts: Vec<ossue_core::queries::ItemTypeCount>,
+    pub draft_note_counts: Vec<ossue_core::queries::ItemTypeCount>,
 }
 
 #[tauri::command]
@@ -97,7 +100,7 @@ pub async fn list_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts, item_type_counts) = tokio::try_join!(
+    let (page, dismissed_counts, item_type_counts, starred_counts, analyzed_counts, draft_note_counts) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
@@ -138,6 +141,36 @@ pub async fn list_items(
                         message: e.to_string(),
                     }
                 })
+        },
+        async {
+            ossue_core::queries::count_starred_pending(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count starred items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
+        },
+        async {
+            ossue_core::queries::count_analyzed_pending(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count analyzed items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
+        },
+        async {
+            ossue_core::queries::count_draft_notes_grouped(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count draft notes");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
     )?;
 
@@ -147,6 +180,9 @@ pub async fn list_items(
         has_more: page.has_more,
         dismissed_counts,
         item_type_counts,
+        starred_counts,
+        analyzed_counts,
+        draft_note_counts,
     })
 }
 
@@ -301,7 +337,7 @@ pub async fn list_dismissed_items(
     tracing::debug!(project_id = ?project_id, item_type = ?item_type, search_query = ?search_query, cursor = ?cursor, "Listing dismissed items");
     let db = state.get_db().await?;
 
-    let (page, dismissed_counts, item_type_counts) = tokio::try_join!(
+    let (page, dismissed_counts, item_type_counts, starred_counts, analyzed_counts, draft_note_counts) = tokio::try_join!(
         async {
             ossue_core::queries::list_items(
                 &db,
@@ -342,6 +378,36 @@ pub async fn list_dismissed_items(
                         message: e.to_string(),
                     }
                 })
+        },
+        async {
+            ossue_core::queries::count_starred_pending(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count starred items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
+        },
+        async {
+            ossue_core::queries::count_analyzed_pending(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count analyzed items");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
+        },
+        async {
+            ossue_core::queries::count_draft_notes_grouped(&db)
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "Failed to count draft notes");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })
         }
     )?;
 
@@ -351,6 +417,9 @@ pub async fn list_dismissed_items(
         has_more: page.has_more,
         dismissed_counts,
         item_type_counts,
+        starred_counts,
+        analyzed_counts,
+        draft_note_counts,
     })
 }
 

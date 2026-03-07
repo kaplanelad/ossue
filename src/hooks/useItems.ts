@@ -152,21 +152,17 @@ export function useItems() {
       const typeFilter = itemTypeFilter === "all" ? undefined : itemTypeFilter;
       const search = searchQuery.trim() || undefined;
       if (showDismissedOnly) {
-        const [response, noteCount] = await Promise.all([
-          api.listDismissedItems({ itemType: typeFilter, searchQuery: search }),
-          api.getDraftIssueCount(),
-        ]);
+        const response = await api.listDismissedItems({ itemType: typeFilter, searchQuery: search });
         setItems(response.items);
-        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, draftNoteCount: noteCount });
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, starredCounts: response.starred_counts, analyzedCounts: response.analyzed_counts, draftNoteCounts: response.draft_note_counts });
       } else {
-        const [response, analyzedIds, noteCount] = await Promise.all([
+        const [response, analyzedIds] = await Promise.all([
           api.listItems({ itemType: typeFilter, searchQuery: search }),
           api.getAnalyzedItemIds(),
-          api.getDraftIssueCount(),
         ]);
         setItems(response.items);
         setAnalyzedItemIds(analyzedIds);
-        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, draftNoteCount: noteCount });
+        useItemStore.setState({ dismissedCounts: response.dismissed_counts, itemTypeCounts: response.item_type_counts, starredCounts: response.starred_counts, analyzedCounts: response.analyzed_counts, draftNoteCounts: response.draft_note_counts });
       }
     } catch (err) {
       toast.error("Failed to fetch items", { description: errorMessage(err) });

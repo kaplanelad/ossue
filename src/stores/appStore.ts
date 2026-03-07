@@ -112,9 +112,11 @@ interface AppState {
   setShowDismissedOnly: (show: boolean) => void;
   dismissedCounts: import("@/types").DismissedCount[];
   itemTypeCounts: import("@/types").ItemTypeCount[];
+  starredCounts: import("@/types").ItemTypeCount[];
+  analyzedCounts: import("@/types").ItemTypeCount[];
 
-  // Persistent note count
-  draftNoteCount: number;
+  // Draft note counts (per project)
+  draftNoteCounts: import("@/types").ItemTypeCount[];
 
   // Refresh interval
   refreshInterval: number;
@@ -214,9 +216,11 @@ function getCompositeState(): AppState {
     setShowDismissedOnly: item.setShowDismissedOnly,
     dismissedCounts: item.dismissedCounts,
     itemTypeCounts: item.itemTypeCounts,
+    starredCounts: item.starredCounts,
+    analyzedCounts: item.analyzedCounts,
 
     // Note count
-    draftNoteCount: item.draftNoteCount,
+    draftNoteCounts: item.draftNoteCounts,
 
     // UI
     refreshInterval: ui.refreshInterval,

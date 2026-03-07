@@ -3,8 +3,8 @@ use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
 use crate::enums::{
-    ActionType, ItemState, ItemStatus, ItemType, ItemTypeData, NoteType, Platform, PrItemData,
-    ProviderItemData, ProviderMode,
+    ActionType, DraftIssueStatus, ItemState, ItemStatus, ItemType, ItemTypeData, NoteData,
+    NoteType, Platform, PrItemData, ProviderItemData, ProviderMode,
 };
 use crate::migration::Migrator;
 use crate::models::{
@@ -196,6 +196,7 @@ pub struct ItemFactory {
     author: Option<String>,
     labels: Option<Vec<String>>,
     pr_branch: Option<String>,
+    draft_status: Option<DraftIssueStatus>,
 }
 
 impl ItemFactory {
@@ -216,6 +217,7 @@ impl ItemFactory {
             author: None,
             labels: None,
             pr_branch: None,
+            draft_status: None,
         }
     }
 
@@ -284,6 +286,11 @@ impl ItemFactory {
         self
     }
 
+    pub fn draft_status(mut self, s: DraftIssueStatus) -> Self {
+        self.draft_status = Some(s);
+        self
+    }
+
     pub async fn create(self, db: &DatabaseConnection) -> item::Model {
         let id = Uuid::new_v4().to_string();
         let ts = self.updated_at.unwrap_or_else(now);
@@ -308,7 +315,16 @@ impl ItemFactory {
             ItemType::Discussion => {
                 serde_json::to_string(&ItemTypeData::Discussion(provider)).unwrap()
             }
-            ItemType::Note => unreachable!("ItemFactory does not create notes"),
+            ItemType::Note => serde_json::to_string(&ItemTypeData::Note(NoteData {
+                raw_content: "test note".to_string(),
+                draft_status: self.draft_status.clone().unwrap_or(DraftIssueStatus::Draft),
+                labels: None,
+                priority: None,
+                area: None,
+                provider_issue_number: None,
+                provider_issue_url: None,
+            }))
+            .unwrap(),
             _ => serde_json::to_string(&ItemTypeData::Issue(provider)).unwrap(),
         };
 

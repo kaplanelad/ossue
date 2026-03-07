@@ -77,7 +77,7 @@ const typeFilters: { value: ItemTypeFilter; label: string; icon: React.ReactNode
 
 export function Sidebar() {
   const { projects, selectedProjectIds, toggleProjectSelection, clearProjectSelection, fetchProjects } = useProjects();
-  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts, itemTypeCounts, draftNoteCount } = useAppStore();
+  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, themePreference, setThemePreference, refreshInbox, dismissedCounts, itemTypeCounts, starredCounts, analyzedCounts, draftNoteCounts } = useAppStore();
   const [version, setVersion] = useState("");
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
@@ -89,48 +89,32 @@ export function Sidebar() {
     });
   };
 
-  // Items filtered by project + type filter (for "Show Only" counters)
-  const baseFilteredItems = useMemo(() => {
-    let result = items;
-    if (selectedProjectIds.length > 0) {
-      const selected = new Set(selectedProjectIds);
-      result = result.filter((i) => selected.has(i.project_id));
-    }
-    if (itemTypeFilter !== "all") {
-      result = result.filter((i) => i.item_type === itemTypeFilter);
-    }
-    return result;
-  }, [items, selectedProjectIds, itemTypeFilter]);
-
-  const noteCount = draftNoteCount;
-  // Use backend-provided counts (independent of current type filter)
-  const typeCountMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const c of itemTypeCounts) {
-      map.set(c.item_type, c.count);
-    }
-    return map;
-  }, [itemTypeCounts]);
-  const issueCount = typeCountMap.get("issue") ?? 0;
-  const prCount = typeCountMap.get("pr") ?? 0;
-  const discussionCount = typeCountMap.get("discussion") ?? 0;
-  const allCount = (typeCountMap.get("issue") ?? 0) + (typeCountMap.get("pr") ?? 0) + (typeCountMap.get("discussion") ?? 0) + noteCount;
-  const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
-  const analyzedCount = useMemo(() => {
-    const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));
-    const readyNotes = baseFilteredItems.filter((i) => i.item_type === "note" && i.type_data.kind === "note" && i.type_data.draft_status === "ready" && !analyzedItemIds.has(i.id));
-    return analyzed.length + readyNotes.length;
-  }, [baseFilteredItems, analyzedItemIds]);
-  const dismissedCount = useMemo(() => {
+  // Helper to sum grouped counts with project + type filtering
+  const sumCounts = useMemo(() => {
     const selectedSet = selectedProjectIds.length > 0 ? new Set(selectedProjectIds) : null;
-    return dismissedCounts
-      .filter((c) => {
-        if (selectedSet && !selectedSet.has(c.project_id)) return false;
-        if (itemTypeFilter !== "all" && c.item_type !== itemTypeFilter) return false;
-        return true;
-      })
-      .reduce((sum, c) => sum + c.count, 0);
-  }, [dismissedCounts, selectedProjectIds, itemTypeFilter]);
+    return (counts: { project_id: string; item_type: string; count: number }[], typeFilter?: string) => {
+      return counts
+        .filter((c) => {
+          if (selectedSet && !selectedSet.has(c.project_id)) return false;
+          if (typeFilter && typeFilter !== "all" && c.item_type !== typeFilter) return false;
+          return true;
+        })
+        .reduce((sum, c) => sum + c.count, 0);
+    };
+  }, [selectedProjectIds]);
+
+  const noteCount = sumCounts(draftNoteCounts);
+
+  // Filter section counters (filtered by selected projects, NOT by type filter)
+  const issueCount = sumCounts(itemTypeCounts, "issue");
+  const prCount = sumCounts(itemTypeCounts, "pr");
+  const discussionCount = sumCounts(itemTypeCounts, "discussion");
+  const allCount = issueCount + prCount + discussionCount + noteCount;
+
+  // Show Only section counters (filtered by selected projects AND type filter)
+  const starredCount = sumCounts(starredCounts, itemTypeFilter);
+  const analyzedCount = sumCounts(analyzedCounts, itemTypeFilter);
+  const dismissedCount = sumCounts(dismissedCounts, itemTypeFilter);
 
   useEffect(() => {
     getVersion().then(setVersion);
