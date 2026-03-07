@@ -72,7 +72,6 @@ export function useChat(itemId: string | null) {
       } catch (err) {
         console.error("Failed to send message:", err);
         toast.error(errorMessage(err));
-        clearAnalysis(itemId);
       } finally {
         useChatStore.getState().setIsLoading(itemId, false);
       }
@@ -117,6 +116,7 @@ export function useChat(itemId: string | null) {
         // For single-step draft_response, clear here.
         if (action !== "analyze") {
           clearAnalysis(itemId);
+          useAppStore.getState().addAnalyzedItemId(itemId);
         }
       } catch (err) {
         console.error("Failed to analyze item:", err);

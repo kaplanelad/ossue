@@ -17,6 +17,7 @@ interface AnalysisStepProps {
   isLast: boolean;
   streamingContent?: string;
   analysisStatus?: string | null;
+  itemType: "issue" | "pr" | "discussion" | "note";
 }
 
 export function AnalysisStep({
@@ -24,6 +25,7 @@ export function AnalysisStep({
   isLast,
   streamingContent,
   analysisStatus,
+  itemType,
 }: AnalysisStepProps) {
   const [copied, setCopied] = useState(false);
   const isActive = step.status === "active" || step.status === "streaming";
@@ -85,7 +87,7 @@ export function AnalysisStep({
             {step.displayLabel}
           </span>
           {isActive && analysisStatus && (
-            <span className="text-xs text-muted-foreground animate-in fade-in duration-300">
+            <span className={`text-xs thinking-spinner thinking-spinner-${itemType} animate-in fade-in duration-300`}>
               {analysisStatus}
             </span>
           )}

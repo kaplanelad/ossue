@@ -297,13 +297,22 @@ export function InboxList() {
     handleItemClick(id);
   };
 
-  const handleToggleStar = async (item: { id: string; is_starred: boolean }) => {
+  const handleToggleStar = async (item: Item) => {
     const newStarred = !item.is_starred;
     updateItem(item.id, { is_starred: newStarred });
+    const updateCount = newStarred
+      ? useItemStore.getState().incrementStarredCount
+      : useItemStore.getState().decrementStarredCount;
+    updateCount(item.project_id, item.item_type);
     try {
       await api.toggleItemStar(item.id, newStarred);
     } catch (err) {
       updateItem(item.id, { is_starred: item.is_starred });
+      // Revert count
+      const revertCount = newStarred
+        ? useItemStore.getState().decrementStarredCount
+        : useItemStore.getState().incrementStarredCount;
+      revertCount(item.project_id, item.item_type);
       toast.error("Failed to update star", { description: errorMessage(err) });
     }
   };
@@ -368,13 +377,21 @@ export function InboxList() {
     await Promise.all(workers);
   };
 
-  const handleNoteToggleStar = async (note: { id: string; is_starred: boolean }) => {
+  const handleNoteToggleStar = async (note: Item) => {
     const newStarred = !note.is_starred;
     updateItem(note.id, { is_starred: newStarred });
+    const updateCount = newStarred
+      ? useItemStore.getState().incrementStarredCount
+      : useItemStore.getState().decrementStarredCount;
+    updateCount(note.project_id, note.item_type);
     try {
       await api.toggleDraftIssueStar(note.id, newStarred);
     } catch (err) {
       updateItem(note.id, { is_starred: note.is_starred });
+      const revertCount = newStarred
+        ? useItemStore.getState().decrementStarredCount
+        : useItemStore.getState().incrementStarredCount;
+      revertCount(note.project_id, note.item_type);
       toast.error("Failed to update star", { description: errorMessage(err) });
     }
   };
@@ -918,7 +935,7 @@ export function InboxList() {
                           repoName={proj ? `${proj.owner}/${proj.name}` : undefined}
                           platform={proj?.platform}
                           isSelected={item.id === selectedItemId}
-                          isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                          isAnalyzing={!!activeAnalyses[item.id]}
                           hasAnalysis={analyzedItemIds.has(item.id)}
                           isChecked={selectedIdSet.has(item.id)}
                           isFocused={globalIndex === focusedIndex}
@@ -977,7 +994,7 @@ export function InboxList() {
                     repoName={project ? `${project.owner}/${project.name}` : undefined}
                     platform={project?.platform}
                     isSelected={item.id === selectedItemId}
-                    isAnalyzing={!!activeAnalyses[item.id]?.isStreaming}
+                    isAnalyzing={!!activeAnalyses[item.id]}
                     hasAnalysis={analyzedItemIds.has(item.id)}
                     isChecked={selectedIdSet.has(item.id)}
                     isFocused={index === focusedIndex}

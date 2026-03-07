@@ -47,9 +47,13 @@ interface ItemState {
 
   // Starred counts (per project+type)
   starredCounts: ItemTypeCount[];
+  incrementStarredCount: (projectId: string, itemType: string) => void;
+  decrementStarredCount: (projectId: string, itemType: string) => void;
 
   // Analyzed counts (per project+type)
   analyzedCounts: ItemTypeCount[];
+  incrementAnalyzedCount: (projectId: string, itemType: string) => void;
+  decrementAnalyzedCount: (projectId: string, itemType: string) => void;
 
   // Draft note counts (per project)
   draftNoteCounts: ItemTypeCount[];
@@ -153,8 +157,42 @@ export const useItemStore = create<ItemState>((set) => ({
   itemTypeCounts: [],
 
   starredCounts: [],
+  incrementStarredCount: (projectId, itemType) =>
+    set((state) => {
+      const exists = state.starredCounts.some((c) => c.project_id === projectId && c.item_type === itemType);
+      return {
+        starredCounts: exists
+          ? state.starredCounts.map((c) =>
+              c.project_id === projectId && c.item_type === itemType ? { ...c, count: c.count + 1 } : c
+            )
+          : [...state.starredCounts, { project_id: projectId, item_type: itemType, count: 1 }],
+      };
+    }),
+  decrementStarredCount: (projectId, itemType) =>
+    set((state) => ({
+      starredCounts: state.starredCounts.map((c) =>
+        c.project_id === projectId && c.item_type === itemType ? { ...c, count: Math.max(0, c.count - 1) } : c
+      ),
+    })),
 
   analyzedCounts: [],
+  incrementAnalyzedCount: (projectId, itemType) =>
+    set((state) => {
+      const exists = state.analyzedCounts.some((c) => c.project_id === projectId && c.item_type === itemType);
+      return {
+        analyzedCounts: exists
+          ? state.analyzedCounts.map((c) =>
+              c.project_id === projectId && c.item_type === itemType ? { ...c, count: c.count + 1 } : c
+            )
+          : [...state.analyzedCounts, { project_id: projectId, item_type: itemType, count: 1 }],
+      };
+    }),
+  decrementAnalyzedCount: (projectId, itemType) =>
+    set((state) => ({
+      analyzedCounts: state.analyzedCounts.map((c) =>
+        c.project_id === projectId && c.item_type === itemType ? { ...c, count: Math.max(0, c.count - 1) } : c
+      ),
+    })),
 
   draftNoteCounts: [],
 

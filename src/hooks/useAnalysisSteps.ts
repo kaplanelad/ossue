@@ -127,8 +127,6 @@ export function useAnalysisSteps(
 
     const isAnalysisComplete =
       hasAnalysis &&
-      !isLoading &&
-      !isStreaming &&
       steps.every((s) => s.status === "complete");
 
     return {
