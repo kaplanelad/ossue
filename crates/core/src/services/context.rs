@@ -77,6 +77,18 @@ impl From<ProjectFiles> for ContextProjectFiles {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-step analysis
+// ---------------------------------------------------------------------------
+
+/// A single step in a multi-step analysis flow.
+pub struct AnalysisStep {
+    /// Shown in chat UI and saved to DB as the user message content.
+    pub display_label: String,
+    /// Full prompt sent to the LLM (includes hidden context on step 1).
+    pub user_prompt: String,
+}
+
+// ---------------------------------------------------------------------------
 // ContextService
 // ---------------------------------------------------------------------------
 
@@ -378,6 +390,136 @@ impl ContextService {
             review_strictness: None,
             response_tone: None,
             pr_diff: None,
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Multi-step analysis
+    // -----------------------------------------------------------------------
+
+    /// Build a system prompt for the multi-step analysis flow.
+    /// This is a single system prompt used for the entire conversation.
+    pub fn build_multi_step_system_prompt(item_type: &ItemType) -> String {
+        let type_label = match item_type {
+            ItemType::Issue => "issue",
+            ItemType::Discussion => "discussion",
+            ItemType::PullRequest => "pull request",
+            ItemType::Note => "item",
+        };
+        format!(
+            "You are a maintainer's assistant analyzing a {type_label}.\n\n\
+             STRICT RULES:\n\
+             1. Be direct and concise. No filler, no sugar-coating.\n\
+             2. NEVER reproduce diff code, code blocks, or raw context data unless specifically asked. Reference files and lines by name only.\n\
+             3. Follow the formatting instructions given in each user message exactly."
+        )
+    }
+
+    /// Build the analysis steps for a multi-step analyze flow.
+    ///
+    /// Step 1 always includes the full context (via `build_action_prompt`).
+    /// Subsequent steps are lighter instructions that rely on the LLM's
+    /// conversation memory from step 1.
+    pub fn build_analysis_steps(
+        item_type: &ItemType,
+        context: &ItemContext,
+        diff: Option<&str>,
+    ) -> Vec<AnalysisStep> {
+        // Step 1 context: reuse existing build_action_prompt for the rich context,
+        // but prepend step-specific formatting instructions.
+        let rich_context = Self::build_action_prompt(&ActionType::Analyze, context, diff);
+
+        match item_type {
+            ItemType::PullRequest => vec![
+                AnalysisStep {
+                    display_label: "Summarize this pull request".to_string(),
+                    user_prompt: format!(
+                        "Summarize this pull request.\n\n\
+                         Format your response as:\n\
+                         ## At a Glance\n\
+                         **Verdict:** CAN MERGE / NEEDS CHANGES / NEEDS DISCUSSION\n\
+                         **Breaking changes:** Yes — [brief] / None found\n\
+                         **Risk:** Low / Medium / High\n\n\
+                         ## What's Going On\n\
+                         1-3 sentences max. What does this PR do? If there are review comments, what's still open?\n\n\
+                         ---\n\n{rich_context}"
+                    ),
+                },
+                AnalysisStep {
+                    display_label: "Review the code changes".to_string(),
+                    user_prompt:
+                        "Now review the code changes. Present findings as:\n\n\
+                         ## Key Findings\n\
+                         | Severity | File | Line | Finding |\n\
+                         |----------|------|------|---------|\n\n\
+                         Only real issues. If nothing, write \"No issues found.\" Do NOT pad with minor style nits.\n\n\
+                         ## Action Items\n\
+                         - [ ] What must happen before merge. If nothing, write \"Ready to merge.\""
+                            .to_string(),
+                },
+                AnalysisStep {
+                    display_label: "Draft a suggested review comment".to_string(),
+                    user_prompt:
+                        "Draft a ready-to-paste GitHub review comment based on your analysis. \
+                         Direct, concise, actionable. No compliments or pleasantries — just what needs to happen. \
+                         If the PR is ready to merge, say so briefly."
+                            .to_string(),
+                },
+            ],
+            ItemType::Discussion => vec![
+                AnalysisStep {
+                    display_label: "Summarize this discussion".to_string(),
+                    user_prompt: format!(
+                        "Summarize this discussion.\n\n\
+                         Format your response as:\n\
+                         ## At a Glance\n\
+                         **Topic:** Configuration | Bug help | Feature idea | General\n\
+                         **Needs maintainer input:** Yes / No\n\
+                         **Community sentiment:** Positive / Neutral / Frustrated\n\n\
+                         ## What's Going On\n\
+                         1-3 sentences max. What is this really about and where does it stand?\n\n\
+                         ---\n\n{rich_context}"
+                    ),
+                },
+                AnalysisStep {
+                    display_label: "Draft a suggested response".to_string(),
+                    user_prompt:
+                        "Draft a ready-to-paste response to this discussion. \
+                         Address the user's actual problem. Point to relevant docs or settings. \
+                         Be welcoming to community participation. Direct and helpful."
+                            .to_string(),
+                },
+            ],
+            // Issue, Note, or anything else: 2 steps
+            _ => vec![
+                AnalysisStep {
+                    display_label: "Summarize this issue".to_string(),
+                    user_prompt: format!(
+                        "Summarize this issue.\n\n\
+                         Format your response as:\n\
+                         ## At a Glance\n\
+                         **Type:** Bug report | Feature request | Question | Support\n\
+                         **Priority:** Critical / High / Medium / Low\n\
+                         **Action:** Response needed / Can close / Needs more info\n\n\
+                         ## What's Going On\n\
+                         1-3 sentences max. What is this really about? If there are comments, what was tried or left unresolved?\n\n\
+                         ## Key Findings\n\
+                         - Is this a duplicate?\n\
+                         - Does existing docs cover this?\n\
+                         - What info is missing?\n\
+                         - Recommended labels\n\n\
+                         ---\n\n{rich_context}"
+                    ),
+                },
+                AnalysisStep {
+                    display_label: "Draft a suggested response".to_string(),
+                    user_prompt:
+                        "Draft a ready-to-paste response to this issue from the perspective of a project maintainer. \
+                         Be welcoming, clear, and helpful. If more info is needed, ask specific questions. \
+                         If this is a known issue or has a workaround, mention it."
+                            .to_string(),
+                },
+            ],
         }
     }
 

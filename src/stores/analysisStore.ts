@@ -14,11 +14,13 @@ interface AnalysisStoreState {
   appendAnalysisContent: (itemId: string, chunk: string) => void;
   endAnalysis: (itemId: string) => void;
   clearAnalysis: (itemId: string) => void;
+  resetStreamingContent: (itemId: string) => void;
 
   // Analyzed item tracking
   analyzedItemIds: Set<string>;
   setAnalyzedItemIds: (ids: string[]) => void;
   addAnalyzedItemId: (id: string) => void;
+  removeAnalyzedItemId: (id: string) => void;
 }
 
 export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
@@ -65,6 +67,17 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
       const { [itemId]: _, ...rest } = state.activeAnalyses;
       return { activeAnalyses: rest };
     }),
+  resetStreamingContent: (itemId) =>
+    set((state) => {
+      const current = state.activeAnalyses[itemId];
+      if (!current) return state;
+      return {
+        activeAnalyses: {
+          ...state.activeAnalyses,
+          [itemId]: { ...current, content: "", isStreaming: false, status: null },
+        },
+      };
+    }),
 
   analyzedItemIds: new Set<string>(),
   setAnalyzedItemIds: (ids) => set({ analyzedItemIds: new Set(ids) }),
@@ -72,4 +85,10 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
     set((state) => ({
       analyzedItemIds: new Set([...state.analyzedItemIds, id]),
     })),
+  removeAnalyzedItemId: (id) =>
+    set((state) => {
+      const next = new Set(state.analyzedItemIds);
+      next.delete(id);
+      return { analyzedItemIds: next };
+    }),
 }));

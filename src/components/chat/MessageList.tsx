@@ -36,10 +36,15 @@ export function MessageList({
     bottomRef.current?.scrollIntoView({ behavior: "instant" });
   }, [messages, streamingContent]);
 
-  // Show action buttons after an Analyze response — detect by the "Analyze" user message label
+  // Show action buttons after the final step of an analysis flow
+  const FINAL_STEP_LABELS = [
+    "Draft a suggested response",
+    "Draft a suggested review comment",
+    "Analyze", // backward compat with old single-step messages
+  ];
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
   const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
-  const wasAnalyze = lastUserMsg?.content === "Analyze";
+  const wasAnalyze = FINAL_STEP_LABELS.includes(lastUserMsg?.content ?? "");
   const showActions = wasAnalyze && !!lastAssistantMsg && !isStreaming && !isLoading;
 
   if (messages.length === 0 && !isStreaming && !isLoading) {

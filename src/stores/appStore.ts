@@ -89,11 +89,13 @@ interface AppState {
   appendAnalysisContent: (itemId: string, chunk: string) => void;
   endAnalysis: (itemId: string) => void;
   clearAnalysis: (itemId: string) => void;
+  resetStreamingContent: (itemId: string) => void;
 
   // Analyzed item tracking
   analyzedItemIds: Set<string>;
   setAnalyzedItemIds: (ids: string[]) => void;
   addAnalyzedItemId: (id: string) => void;
+  removeAnalyzedItemId: (id: string) => void;
 
   // Search
   searchQuery: string;
@@ -197,9 +199,11 @@ function getCompositeState(): AppState {
     appendAnalysisContent: analysis.appendAnalysisContent,
     endAnalysis: analysis.endAnalysis,
     clearAnalysis: analysis.clearAnalysis,
+    resetStreamingContent: analysis.resetStreamingContent,
     analyzedItemIds: analysis.analyzedItemIds,
     setAnalyzedItemIds: analysis.setAnalyzedItemIds,
     addAnalyzedItemId: analysis.addAnalyzedItemId,
+    removeAnalyzedItemId: analysis.removeAnalyzedItemId,
 
     // Search
     searchQuery: item.searchQuery,

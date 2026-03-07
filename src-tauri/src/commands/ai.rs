@@ -406,97 +406,10 @@ pub async fn send_chat_message(
         );
         let _ = app.emit("ai-stream-start", &item_id);
 
-        match service.send_message_streaming(&api_messages).await {
-            Ok(response) => {
-                use futures_util::StreamExt;
-                let mut stream = response.bytes_stream();
-                let mut full_response = String::new();
-                let mut buffer = String::new();
-                let mut input_tokens: Option<i32> = None;
-                let mut output_tokens: Option<i32> = None;
-
-                while let Some(chunk) = stream.next().await {
-                    match chunk {
-                        Ok(bytes) => {
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                            // Process SSE lines
-                            while let Some(pos) = buffer.find("\n\n") {
-                                let event_block = buffer[..pos].to_string();
-                                buffer = buffer[pos + 2..].to_string();
-
-                                for line in event_block.lines() {
-                                    if let Some(data) = line.strip_prefix("data: ") {
-                                        if data == "[DONE]" {
-                                            continue;
-                                        }
-                                        if let Ok(event) =
-                                            serde_json::from_str::<
-                                                ossue_core::services::ai_api::StreamEvent,
-                                            >(data)
-                                        {
-                                            match event {
-                                                ossue_core::services::ai_api::StreamEvent::MessageStart { message } => {
-                                                    input_tokens = message.usage.input_tokens.map(|v| v as i32);
-                                                }
-                                                ossue_core::services::ai_api::StreamEvent::ContentBlockDelta {
-                                                    delta,
-                                                    ..
-                                                } => {
-                                                    if let Some(text) = delta.text {
-                                                        full_response.push_str(&text);
-                                                        let _ = app.emit(
-                                                            "ai-stream-chunk",
-                                                            serde_json::json!({
-                                                                "item_id": &item_id,
-                                                                "chunk": &text
-                                                            }),
-                                                        );
-                                                    }
-                                                }
-                                                ossue_core::services::ai_api::StreamEvent::MessageDelta { usage, .. } => {
-                                                    output_tokens = usage.output_tokens.map(|v| v as i32);
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(error = %e, item_id = %item_id, "Stream chunk error");
-                            return Err(CommandError::PlatformApi {
-                                message: format!("Stream error: {e}"),
-                            });
-                        }
-                    }
-                }
-
-                let _ = app.emit("ai-stream-end", &item_id);
-                tracing::info!(item_id = %item_id, response_len = full_response.len(), "AI streaming completed");
-                (full_response, input_tokens, output_tokens, Some(model_name))
-            }
-            Err(e) => {
-                // Fall back to non-streaming
-                tracing::warn!(item_id = %item_id, error = %e, "Streaming failed, falling back to non-streaming");
-                let (content, usage) = service
-                    .send_message(&api_messages)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!(error = %e, item_id = %item_id, "Non-streaming AI request also failed");
-                        CommandError::Internal { message: e.to_string() }
-                    })?;
-                // Emit stream-end for the non-streaming fallback path
-                let _ = app.emit("ai-stream-end", &item_id);
-                (
-                    content,
-                    usage.input_tokens.map(|v| v as i32),
-                    usage.output_tokens.map(|v| v as i32),
-                    Some(model_name),
-                )
-            }
-        }
+        let (full_response, input_tokens, output_tokens) =
+            stream_llm_response(&app, &item_id, &service, &api_messages).await?;
+        let _ = app.emit("ai-stream-end", &item_id);
+        (full_response, input_tokens, output_tokens, Some(model_name))
     } else {
         // CLI mode - run claude -p with the conversation as prompt
         tracing::info!(item_id = %item_id, "Running Claude CLI for analysis");
@@ -1056,249 +969,482 @@ pub async fn analyze_item_action(
         let cli_tool = ossue_core::services::provider::CliTool::from_str(&ctx.ai_mode)
             .unwrap_or(ossue_core::services::provider::CliTool::ClaudeCode);
 
-        let response_content = ossue_core::services::provider::analyze_with_cli(
-            &cli_tool,
-            None,
-            &action_type,
-            &item_context,
-            item_context.pr_diff.as_deref(),
-            &cli_path,
-            ctx.ai_model.as_deref(),
-        )
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, item_id = %request.item_id, "CLI analysis failed");
-            CommandError::Internal {
-                message: e.to_string(),
+        if action_type == ActionType::Analyze {
+            // Multi-step CLI analysis
+            let steps = ContextService::build_analysis_steps(
+                &ctx.item.item_type,
+                &item_context,
+                item_context.pr_diff.as_deref(),
+            );
+
+            let system_prompt =
+                ContextService::build_multi_step_system_prompt(&ctx.item.item_type);
+            let mut conversation_text = format!("System: {}\n\n", system_prompt);
+            let mut last_saved: Option<ChatMessageResponse> = None;
+
+            for (step_idx, step) in steps.iter().enumerate() {
+                tracing::info!(
+                    item_id = %request.item_id,
+                    step = step_idx + 1,
+                    label = %step.display_label,
+                    "Starting CLI analysis step"
+                );
+
+                // Save user message
+                let user_msg_id = Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().naive_utc();
+                {
+                    let db = state.get_db().await?;
+                    let user_msg = chat_message::ActiveModel {
+                        id: Set(user_msg_id.clone()),
+                        item_id: Set(request.item_id.clone()),
+                        role: Set("user".to_string()),
+                        content: Set(step.display_label.clone()),
+                        created_at: Set(now),
+                        input_tokens: Set(None),
+                        output_tokens: Set(None),
+                        model: Set(None),
+                    };
+                    user_msg.insert(&db).await.map_err(|e| {
+                        tracing::error!(error = %e, item_id = %request.item_id, "Failed to save step user message");
+                        CommandError::Internal {
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+
+                // Emit user message event
+                let user_chat_msg = ChatMessageResponse {
+                    id: user_msg_id,
+                    item_id: request.item_id.clone(),
+                    role: "user".to_string(),
+                    content: step.display_label.clone(),
+                    created_at: now.to_string(),
+                    input_tokens: None,
+                    output_tokens: None,
+                    model: None,
+                };
+                let _ = app.emit(
+                    "ai-step-user-message",
+                    serde_json::json!({
+                        "item_id": &request.item_id,
+                        "message": &user_chat_msg
+                    }),
+                );
+
+                // Build CLI prompt with conversation so far
+                conversation_text.push_str(&format!("User: {}\n\n", step.user_prompt));
+
+                let binary = cli_tool.binary_name();
+                let mut args = vec!["-p".to_string(), conversation_text.clone()];
+                if let Some(ref m) = ctx.ai_model {
+                    args.push("--model".to_string());
+                    args.push(m.clone());
+                }
+
+                let _ = app.emit("ai-stream-start", &request.item_id);
+
+                let output = tokio::process::Command::new(binary)
+                    .current_dir(&cli_path)
+                    .args(&args)
+                    .output()
+                    .await
+                    .map_err(|e| {
+                        tracing::error!(error = %e, item_id = %request.item_id, "Failed to run CLI for step");
+                        CommandError::Internal {
+                            message: format!("Failed to run {binary}: {e}"),
+                        }
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::error!(stderr = %stderr, item_id = %request.item_id, "CLI returned error at step {}", step_idx + 1);
+                    let _ = app.emit("ai-stream-end", &request.item_id);
+                    return Err(CommandError::Internal {
+                        message: format!("{binary} error: {stderr}"),
+                    });
+                }
+
+                let response_content = String::from_utf8_lossy(&output.stdout).to_string();
+                conversation_text
+                    .push_str(&format!("Assistant: {}\n\n", response_content));
+
+                // Save assistant message
+                let assistant_msg_id = Uuid::new_v4().to_string();
+                let assistant_now = chrono::Utc::now().naive_utc();
+                {
+                    let db = state.get_db().await?;
+                    let assistant_msg = chat_message::ActiveModel {
+                        id: Set(assistant_msg_id.clone()),
+                        item_id: Set(request.item_id.clone()),
+                        role: Set("assistant".to_string()),
+                        content: Set(response_content.clone()),
+                        created_at: Set(assistant_now),
+                        input_tokens: Set(None),
+                        output_tokens: Set(None),
+                        model: Set(ctx.ai_model.clone()),
+                    };
+                    assistant_msg.insert(&db).await.map_err(|e| {
+                        tracing::error!(error = %e, item_id = %request.item_id, "Failed to save step assistant message");
+                        CommandError::Internal {
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+
+                let _ = app.emit("ai-stream-end", &request.item_id);
+
+                let assistant_chat_msg = ChatMessageResponse {
+                    id: assistant_msg_id,
+                    item_id: request.item_id.clone(),
+                    role: "assistant".to_string(),
+                    content: response_content,
+                    created_at: assistant_now.to_string(),
+                    input_tokens: None,
+                    output_tokens: None,
+                    model: ctx.ai_model.clone(),
+                };
+                let _ = app.emit(
+                    "ai-step-assistant-message",
+                    serde_json::json!({
+                        "item_id": &request.item_id,
+                        "message": &assistant_chat_msg
+                    }),
+                );
+
+                last_saved = Some(assistant_chat_msg);
             }
-        })?;
 
-        // Save messages (user prompt + assistant response)
-        let db = state.get_db().await?;
+            let _ = app.emit("ai-analysis-complete", &request.item_id);
 
-        let now = chrono::Utc::now().naive_utc();
+            Ok(last_saved.unwrap_or(ChatMessageResponse {
+                id: String::new(),
+                item_id: request.item_id.clone(),
+                role: "assistant".to_string(),
+                content: String::new(),
+                created_at: chrono::Utc::now().naive_utc().to_string(),
+                input_tokens: None,
+                output_tokens: None,
+                model: None,
+            }))
+        } else {
+            // Single-step CLI for DraftResponse
+            let response_content = ossue_core::services::provider::analyze_with_cli(
+                &cli_tool,
+                None,
+                &action_type,
+                &item_context,
+                item_context.pr_diff.as_deref(),
+                &cli_path,
+                ctx.ai_model.as_deref(),
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, item_id = %request.item_id, "CLI analysis failed");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })?;
 
-        let user_msg = chat_message::ActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
-            item_id: Set(request.item_id.clone()),
-            role: Set("user".to_string()),
-            content: Set(display_label.clone()),
-            created_at: Set(now),
-            input_tokens: Set(None),
-            output_tokens: Set(None),
-            model: Set(None),
-        };
-        user_msg.insert(&db).await.map_err(|e| {
-            tracing::error!(error = %e, item_id = %request.item_id, "Failed to save user message");
-            CommandError::Internal {
-                message: e.to_string(),
-            }
-        })?;
-
-        let assistant_msg = chat_message::ActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
-            item_id: Set(request.item_id.clone()),
-            role: Set("assistant".to_string()),
-            content: Set(response_content.clone()),
-            created_at: Set(chrono::Utc::now().naive_utc()),
-            input_tokens: Set(None),
-            output_tokens: Set(None),
-            model: Set(ctx.ai_model),
-        };
-        let saved = assistant_msg.insert(&db).await.map_err(|e| {
-            tracing::error!(error = %e, item_id = %request.item_id, "Failed to save assistant message");
-            CommandError::Internal { message: e.to_string() }
-        })?;
-
-        // Emit stream-end so the frontend cleans up analysis state
-        let _ = app.emit("ai-stream-end", &request.item_id);
-
-        Ok(ChatMessageResponse {
-            id: saved.id,
-            item_id: saved.item_id,
-            role: saved.role,
-            content: saved.content,
-            created_at: saved.created_at.to_string(),
-            input_tokens: saved.input_tokens,
-            output_tokens: saved.output_tokens,
-            model: saved.model,
-        })
-    } else {
-        // API mode: delegate to send_chat_message with the built prompt
-        let system_prompt = ContextService::build_system_prompt(&action_type, &ctx.item.item_type);
-
-        let api_key_value = ctx.api_key_value.ok_or_else(|| {
-            tracing::error!(item_id = %request.item_id, "AI API key not configured");
-            CommandError::AiNotConfigured
-        })?;
-
-        let service = AiApiService::new_with_system(api_key_value, ctx.ai_model, system_prompt);
-
-        // Build messages: existing history + new action prompt
-        let mut api_messages: Vec<ApiMessage> = chat_history
-            .iter()
-            .map(|m| ApiMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-            })
-            .collect();
-
-        api_messages.push(ApiMessage {
-            role: "user".to_string(),
-            content: action_prompt.clone(),
-        });
-
-        let api_messages = truncate_chat_history(api_messages);
-
-        let model_name = service.model().to_string();
-
-        // Save the user message first
-        {
             let db = state.get_db().await?;
+            let now = chrono::Utc::now().naive_utc();
 
             let user_msg = chat_message::ActiveModel {
                 id: Set(Uuid::new_v4().to_string()),
                 item_id: Set(request.item_id.clone()),
                 role: Set("user".to_string()),
-                content: Set(display_label),
-                created_at: Set(chrono::Utc::now().naive_utc()),
+                content: Set(display_label.clone()),
+                created_at: Set(now),
                 input_tokens: Set(None),
                 output_tokens: Set(None),
                 model: Set(None),
             };
             user_msg.insert(&db).await.map_err(|e| {
                 tracing::error!(error = %e, item_id = %request.item_id, "Failed to save user message");
-                CommandError::Internal { message: e.to_string() }
-            })?;
-        }
-
-        // Emit streaming start event
-        let _ = app.emit(
-            "ai-analysis-progress",
-            serde_json::json!({
-                "item_id": &request.item_id,
-                "status": "Waiting for AI..."
-            }),
-        );
-        let _ = app.emit("ai-stream-start", &request.item_id);
-
-        let (response_content, input_tokens, output_tokens) = match service
-            .send_message_streaming(&api_messages)
-            .await
-        {
-            Ok(response) => {
-                use futures_util::StreamExt;
-                let mut stream = response.bytes_stream();
-                let mut full_response = String::new();
-                let mut buffer = String::new();
-                let mut input_tokens: Option<i32> = None;
-                let mut output_tokens: Option<i32> = None;
-
-                while let Some(chunk) = stream.next().await {
-                    match chunk {
-                        Ok(bytes) => {
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                            while let Some(pos) = buffer.find("\n\n") {
-                                let event_block = buffer[..pos].to_string();
-                                buffer = buffer[pos + 2..].to_string();
-
-                                for line in event_block.lines() {
-                                    if let Some(data) = line.strip_prefix("data: ") {
-                                        if data == "[DONE]" {
-                                            continue;
-                                        }
-                                        if let Ok(event) =
-                                            serde_json::from_str::<
-                                                ossue_core::services::ai_api::StreamEvent,
-                                            >(data)
-                                        {
-                                            match event {
-                                                ossue_core::services::ai_api::StreamEvent::MessageStart { message } => {
-                                                    input_tokens = message.usage.input_tokens.map(|v| v as i32);
-                                                }
-                                                ossue_core::services::ai_api::StreamEvent::ContentBlockDelta {
-                                                    delta,
-                                                    ..
-                                                } => {
-                                                    if let Some(text) = delta.text {
-                                                        full_response.push_str(&text);
-                                                        let _ = app.emit(
-                                                            "ai-stream-chunk",
-                                                            serde_json::json!({
-                                                                "item_id": &request.item_id,
-                                                                "chunk": &text
-                                                            }),
-                                                        );
-                                                    }
-                                                }
-                                                ossue_core::services::ai_api::StreamEvent::MessageDelta { usage, .. } => {
-                                                    output_tokens = usage.output_tokens.map(|v| v as i32);
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(error = %e, item_id = %request.item_id, "Stream chunk error");
-                            return Err(CommandError::PlatformApi {
-                                message: format!("Stream error: {e}"),
-                            });
-                        }
-                    }
+                CommandError::Internal {
+                    message: e.to_string(),
                 }
+            })?;
 
-                let _ = app.emit("ai-stream-end", &request.item_id);
-                tracing::info!(item_id = %request.item_id, response_len = full_response.len(), "AI streaming completed");
-                (full_response, input_tokens, output_tokens)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, item_id = %request.item_id, "Streaming failed, falling back to non-streaming");
-                let (content, usage) = service.send_message(&api_messages).await.map_err(|e| {
-                    tracing::error!(error = %e, item_id = %request.item_id, "Non-streaming AI request also failed");
-                    CommandError::Internal { message: e.to_string() }
-                })?;
-                // Emit stream-end for the non-streaming fallback path
-                let _ = app.emit("ai-stream-end", &request.item_id);
-                (
-                    content,
-                    usage.input_tokens.map(|v| v as i32),
-                    usage.output_tokens.map(|v| v as i32),
-                )
-            }
+            let assistant_msg = chat_message::ActiveModel {
+                id: Set(Uuid::new_v4().to_string()),
+                item_id: Set(request.item_id.clone()),
+                role: Set("assistant".to_string()),
+                content: Set(response_content.clone()),
+                created_at: Set(chrono::Utc::now().naive_utc()),
+                input_tokens: Set(None),
+                output_tokens: Set(None),
+                model: Set(ctx.ai_model),
+            };
+            let saved = assistant_msg.insert(&db).await.map_err(|e| {
+                tracing::error!(error = %e, item_id = %request.item_id, "Failed to save assistant message");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })?;
+
+            let _ = app.emit("ai-stream-end", &request.item_id);
+
+            Ok(ChatMessageResponse {
+                id: saved.id,
+                item_id: saved.item_id,
+                role: saved.role,
+                content: saved.content,
+                created_at: saved.created_at.to_string(),
+                input_tokens: saved.input_tokens,
+                output_tokens: saved.output_tokens,
+                model: saved.model,
+            })
+        }
+    } else {
+        // API mode: multi-step analysis flow
+        let system_prompt = if action_type == ActionType::Analyze {
+            ContextService::build_multi_step_system_prompt(&ctx.item.item_type)
+        } else {
+            ContextService::build_system_prompt(&action_type, &ctx.item.item_type)
         };
 
-        // Save assistant message
-        let db = state.get_db().await?;
-
-        let assistant_msg = chat_message::ActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
-            item_id: Set(request.item_id.clone()),
-            role: Set("assistant".to_string()),
-            content: Set(response_content.clone()),
-            created_at: Set(chrono::Utc::now().naive_utc()),
-            input_tokens: Set(input_tokens),
-            output_tokens: Set(output_tokens),
-            model: Set(Some(model_name)),
-        };
-        let saved = assistant_msg.insert(&db).await.map_err(|e| {
-            tracing::error!(error = %e, item_id = %request.item_id, "Failed to save assistant message");
-            CommandError::Internal { message: e.to_string() }
+        let api_key_value = ctx.api_key_value.ok_or_else(|| {
+            tracing::error!(item_id = %request.item_id, "AI API key not configured");
+            CommandError::AiNotConfigured
         })?;
 
-        Ok(ChatMessageResponse {
-            id: saved.id,
-            item_id: saved.item_id,
-            role: saved.role,
-            content: saved.content,
-            created_at: saved.created_at.to_string(),
-            input_tokens: saved.input_tokens,
-            output_tokens: saved.output_tokens,
-            model: saved.model,
-        })
+        let service =
+            AiApiService::new_with_system(api_key_value, ctx.ai_model.clone(), system_prompt);
+        let model_name = service.model().to_string();
+
+        if action_type == ActionType::Analyze {
+            // Multi-step analysis
+            let steps = ContextService::build_analysis_steps(
+                &ctx.item.item_type,
+                &item_context,
+                item_context.pr_diff.as_deref(),
+            );
+
+            // Initialize conversation with truncated chat history
+            let mut api_conversation: Vec<ApiMessage> = chat_history
+                .iter()
+                .map(|m| ApiMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                })
+                .collect();
+            let api_conversation_base = truncate_chat_history(api_conversation);
+            api_conversation = api_conversation_base;
+
+            let mut last_saved: Option<ChatMessageResponse> = None;
+
+            for (step_idx, step) in steps.iter().enumerate() {
+                tracing::info!(
+                    item_id = %request.item_id,
+                    step = step_idx + 1,
+                    label = %step.display_label,
+                    "Starting analysis step"
+                );
+
+                // a. Save user message to DB (display_label as content)
+                let user_msg_id = Uuid::new_v4().to_string();
+                let now = chrono::Utc::now().naive_utc();
+                {
+                    let db = state.get_db().await?;
+                    let user_msg = chat_message::ActiveModel {
+                        id: Set(user_msg_id.clone()),
+                        item_id: Set(request.item_id.clone()),
+                        role: Set("user".to_string()),
+                        content: Set(step.display_label.clone()),
+                        created_at: Set(now),
+                        input_tokens: Set(None),
+                        output_tokens: Set(None),
+                        model: Set(None),
+                    };
+                    user_msg.insert(&db).await.map_err(|e| {
+                        tracing::error!(error = %e, item_id = %request.item_id, "Failed to save step user message");
+                        CommandError::Internal {
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+
+                // b. Emit user message event
+                let user_chat_msg = ChatMessageResponse {
+                    id: user_msg_id,
+                    item_id: request.item_id.clone(),
+                    role: "user".to_string(),
+                    content: step.display_label.clone(),
+                    created_at: now.to_string(),
+                    input_tokens: None,
+                    output_tokens: None,
+                    model: None,
+                };
+                let _ = app.emit(
+                    "ai-step-user-message",
+                    serde_json::json!({
+                        "item_id": &request.item_id,
+                        "message": &user_chat_msg
+                    }),
+                );
+
+                // c. Add step's user_prompt (NOT display_label) to api_conversation
+                api_conversation.push(ApiMessage {
+                    role: "user".to_string(),
+                    content: step.user_prompt.clone(),
+                });
+
+                // d. Emit stream-start
+                let _ = app.emit("ai-stream-start", &request.item_id);
+
+                // e. Call stream_llm_response
+                let (response_content, input_tokens, output_tokens) =
+                    stream_llm_response(&app, &request.item_id, &service, &api_conversation)
+                        .await?;
+
+                // f. Save assistant message to DB
+                let assistant_msg_id = Uuid::new_v4().to_string();
+                let assistant_now = chrono::Utc::now().naive_utc();
+                {
+                    let db = state.get_db().await?;
+                    let assistant_msg = chat_message::ActiveModel {
+                        id: Set(assistant_msg_id.clone()),
+                        item_id: Set(request.item_id.clone()),
+                        role: Set("assistant".to_string()),
+                        content: Set(response_content.clone()),
+                        created_at: Set(assistant_now),
+                        input_tokens: Set(input_tokens),
+                        output_tokens: Set(output_tokens),
+                        model: Set(Some(model_name.clone())),
+                    };
+                    assistant_msg.insert(&db).await.map_err(|e| {
+                        tracing::error!(error = %e, item_id = %request.item_id, "Failed to save step assistant message");
+                        CommandError::Internal {
+                            message: e.to_string(),
+                        }
+                    })?;
+                }
+
+                // g. Emit stream-end (resets streaming content for next step)
+                let _ = app.emit("ai-stream-end", &request.item_id);
+
+                // h. Emit assistant message event
+                let assistant_chat_msg = ChatMessageResponse {
+                    id: assistant_msg_id,
+                    item_id: request.item_id.clone(),
+                    role: "assistant".to_string(),
+                    content: response_content.clone(),
+                    created_at: assistant_now.to_string(),
+                    input_tokens,
+                    output_tokens,
+                    model: Some(model_name.clone()),
+                };
+                let _ = app.emit(
+                    "ai-step-assistant-message",
+                    serde_json::json!({
+                        "item_id": &request.item_id,
+                        "message": &assistant_chat_msg
+                    }),
+                );
+
+                // i. Add assistant response to api_conversation
+                api_conversation.push(ApiMessage {
+                    role: "assistant".to_string(),
+                    content: response_content,
+                });
+
+                last_saved = Some(assistant_chat_msg);
+            }
+
+            // Emit analysis-complete
+            let _ = app.emit("ai-analysis-complete", &request.item_id);
+
+            Ok(last_saved.unwrap_or(ChatMessageResponse {
+                id: String::new(),
+                item_id: request.item_id.clone(),
+                role: "assistant".to_string(),
+                content: String::new(),
+                created_at: chrono::Utc::now().naive_utc().to_string(),
+                input_tokens: None,
+                output_tokens: None,
+                model: None,
+            }))
+        } else {
+            // Single-step for DraftResponse (unchanged logic)
+            let mut api_messages: Vec<ApiMessage> = chat_history
+                .iter()
+                .map(|m| ApiMessage {
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                })
+                .collect();
+
+            api_messages.push(ApiMessage {
+                role: "user".to_string(),
+                content: action_prompt.clone(),
+            });
+
+            let api_messages = truncate_chat_history(api_messages);
+
+            // Save the user message first
+            {
+                let db = state.get_db().await?;
+                let user_msg = chat_message::ActiveModel {
+                    id: Set(Uuid::new_v4().to_string()),
+                    item_id: Set(request.item_id.clone()),
+                    role: Set("user".to_string()),
+                    content: Set(display_label),
+                    created_at: Set(chrono::Utc::now().naive_utc()),
+                    input_tokens: Set(None),
+                    output_tokens: Set(None),
+                    model: Set(None),
+                };
+                user_msg.insert(&db).await.map_err(|e| {
+                    tracing::error!(error = %e, item_id = %request.item_id, "Failed to save user message");
+                    CommandError::Internal {
+                        message: e.to_string(),
+                    }
+                })?;
+            }
+
+            let _ = app.emit(
+                "ai-analysis-progress",
+                serde_json::json!({
+                    "item_id": &request.item_id,
+                    "status": "Waiting for AI..."
+                }),
+            );
+            let _ = app.emit("ai-stream-start", &request.item_id);
+
+            let (response_content, input_tokens, output_tokens) =
+                stream_llm_response(&app, &request.item_id, &service, &api_messages).await?;
+            let _ = app.emit("ai-stream-end", &request.item_id);
+
+            let db = state.get_db().await?;
+            let assistant_msg = chat_message::ActiveModel {
+                id: Set(Uuid::new_v4().to_string()),
+                item_id: Set(request.item_id.clone()),
+                role: Set("assistant".to_string()),
+                content: Set(response_content.clone()),
+                created_at: Set(chrono::Utc::now().naive_utc()),
+                input_tokens: Set(input_tokens),
+                output_tokens: Set(output_tokens),
+                model: Set(Some(model_name)),
+            };
+            let saved = assistant_msg.insert(&db).await.map_err(|e| {
+                tracing::error!(error = %e, item_id = %request.item_id, "Failed to save assistant message");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })?;
+
+            Ok(ChatMessageResponse {
+                id: saved.id,
+                item_id: saved.item_id,
+                role: saved.role,
+                content: saved.content,
+                created_at: saved.created_at.to_string(),
+                input_tokens: saved.input_tokens,
+                output_tokens: saved.output_tokens,
+                model: saved.model,
+            })
+        }
     };
 
     // Phase 5: Cleanup worktree (always, success or error)
@@ -1331,6 +1477,105 @@ pub async fn clear_chat(state: State<'_, AppState>, item_id: String) -> Result<(
         })?;
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Streaming helper
+// ---------------------------------------------------------------------------
+
+/// Stream an LLM response via SSE, emitting chunks to the frontend.
+/// Returns (full_response, input_tokens, output_tokens).
+async fn stream_llm_response(
+    app: &tauri::AppHandle,
+    item_id: &str,
+    service: &AiApiService,
+    api_messages: &[ApiMessage],
+) -> Result<(String, Option<i32>, Option<i32>), CommandError> {
+    match service.send_message_streaming(api_messages).await {
+        Ok(response) => {
+            use futures_util::StreamExt;
+            let mut stream = response.bytes_stream();
+            let mut full_response = String::new();
+            let mut buffer = String::new();
+            let mut input_tokens: Option<i32> = None;
+            let mut output_tokens: Option<i32> = None;
+
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+                        while let Some(pos) = buffer.find("\n\n") {
+                            let event_block = buffer[..pos].to_string();
+                            buffer = buffer[pos + 2..].to_string();
+
+                            for line in event_block.lines() {
+                                if let Some(data) = line.strip_prefix("data: ") {
+                                    if data == "[DONE]" {
+                                        continue;
+                                    }
+                                    if let Ok(event) =
+                                        serde_json::from_str::<
+                                            ossue_core::services::ai_api::StreamEvent,
+                                        >(data)
+                                    {
+                                        match event {
+                                            ossue_core::services::ai_api::StreamEvent::MessageStart { message } => {
+                                                input_tokens = message.usage.input_tokens.map(|v| v as i32);
+                                            }
+                                            ossue_core::services::ai_api::StreamEvent::ContentBlockDelta {
+                                                delta,
+                                                ..
+                                            } => {
+                                                if let Some(text) = delta.text {
+                                                    full_response.push_str(&text);
+                                                    let _ = app.emit(
+                                                        "ai-stream-chunk",
+                                                        serde_json::json!({
+                                                            "item_id": item_id,
+                                                            "chunk": &text
+                                                        }),
+                                                    );
+                                                }
+                                            }
+                                            ossue_core::services::ai_api::StreamEvent::MessageDelta { usage, .. } => {
+                                                output_tokens = usage.output_tokens.map(|v| v as i32);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, item_id = %item_id, "Stream chunk error");
+                        return Err(CommandError::PlatformApi {
+                            message: format!("Stream error: {e}"),
+                        });
+                    }
+                }
+            }
+
+            tracing::info!(item_id = %item_id, response_len = full_response.len(), "AI streaming completed");
+            Ok((full_response, input_tokens, output_tokens))
+        }
+        Err(e) => {
+            // Fall back to non-streaming
+            tracing::warn!(item_id = %item_id, error = %e, "Streaming failed, falling back to non-streaming");
+            let (content, usage) = service.send_message(api_messages).await.map_err(|e| {
+                tracing::error!(error = %e, item_id = %item_id, "Non-streaming AI request also failed");
+                CommandError::Internal {
+                    message: e.to_string(),
+                }
+            })?;
+            Ok((
+                content,
+                usage.input_tokens.map(|v| v as i32),
+                usage.output_tokens.map(|v| v as i32),
+            ))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
