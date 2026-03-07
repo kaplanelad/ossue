@@ -61,9 +61,11 @@ interface InboxItemProps {
   onDelete: () => void;
   onRestore?: () => void;
   isDismissedView?: boolean;
+  linkedItems?: Item[];
+  onNavigateToItem?: (id: string) => void;
 }
 
-export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView }, ref) {
+export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView, linkedItems, onNavigateToItem }, ref) {
   const [bodyExpanded, setBodyExpanded] = useState(false);
   const timeAgo = formatTimeAgo(item.updated_at);
   const strippedBody = item.body ? stripMarkdown(item.body) : "";
@@ -152,6 +154,17 @@ export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxI
                 {repoName}
               </Badge>
             )}
+            {linkedItems && linkedItems.length > 0 && linkedItems.map((linked) => (
+              <button
+                key={linked.id}
+                className="inline-flex shrink-0 items-center gap-0.5 rounded bg-blue-500/10 px-1.5 py-0 text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onNavigateToItem?.(linked.id); }}
+                title={linked.title}
+              >
+                {linked.item_type === "pr" ? <GitPullRequest className="h-2.5 w-2.5" /> : <CircleDot className="h-2.5 w-2.5" />}
+                #{linked.type_data.kind !== "note" && linked.type_data.external_id}
+              </button>
+            ))}
             {item.type_data.kind !== "note" && item.type_data.comments_count > 0 && (
               <span className="ml-auto flex shrink-0 items-center gap-1">
                 <MessageSquare className="h-3 w-3" />
