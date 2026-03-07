@@ -185,6 +185,164 @@ pub struct DismissedCount {
     pub count: u64,
 }
 
+/// Count of pending (non-dismissed) items grouped by (project_id, item_type).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ItemTypeCount {
+    pub project_id: String,
+    pub item_type: String,
+    pub count: u64,
+}
+
+/// Count pending items grouped by (project_id, item_type).
+pub async fn count_pending_by_type(
+    db: &DatabaseConnection,
+) -> Result<Vec<ItemTypeCount>, sea_orm::DbErr> {
+    use sea_orm::FromQueryResult;
+
+    #[derive(Debug, FromQueryResult)]
+    struct Row {
+        project_id: String,
+        item_type: String,
+        count: i64,
+    }
+
+    let rows = item::Entity::find()
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Pending))
+        .select_only()
+        .column(item::Column::ProjectId)
+        .column(item::Column::ItemType)
+        .column_as(item::Column::Id.count(), "count")
+        .group_by(item::Column::ProjectId)
+        .group_by(item::Column::ItemType)
+        .into_model::<Row>()
+        .all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ItemTypeCount {
+            project_id: r.project_id,
+            item_type: r.item_type,
+            count: r.count as u64,
+        })
+        .collect())
+}
+
+/// Count starred pending items grouped by (project_id, item_type).
+pub async fn count_starred_pending(
+    db: &DatabaseConnection,
+) -> Result<Vec<ItemTypeCount>, sea_orm::DbErr> {
+    use sea_orm::FromQueryResult;
+
+    #[derive(Debug, FromQueryResult)]
+    struct Row {
+        project_id: String,
+        item_type: String,
+        count: i64,
+    }
+
+    let rows = item::Entity::find()
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Pending))
+        .filter(item::Column::IsStarred.eq(true))
+        .select_only()
+        .column(item::Column::ProjectId)
+        .column(item::Column::ItemType)
+        .column_as(item::Column::Id.count(), "count")
+        .group_by(item::Column::ProjectId)
+        .group_by(item::Column::ItemType)
+        .into_model::<Row>()
+        .all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ItemTypeCount {
+            project_id: r.project_id,
+            item_type: r.item_type,
+            count: r.count as u64,
+        })
+        .collect())
+}
+
+/// Count pending items that have been analyzed (have chat messages) grouped by (project_id, item_type).
+pub async fn count_analyzed_pending(
+    db: &DatabaseConnection,
+) -> Result<Vec<ItemTypeCount>, sea_orm::DbErr> {
+    use sea_orm::FromQueryResult;
+
+    use crate::models::chat_message;
+
+    #[derive(Debug, FromQueryResult)]
+    struct Row {
+        project_id: String,
+        item_type: String,
+        count: i64,
+    }
+
+    let rows = item::Entity::find()
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Pending))
+        .filter(item::Column::IsDeleted.eq(false))
+        .inner_join(chat_message::Entity)
+        .select_only()
+        .column(item::Column::ProjectId)
+        .column(item::Column::ItemType)
+        .column_as(Expr::cust("COUNT(DISTINCT items.id)"), "count")
+        .group_by(item::Column::ProjectId)
+        .group_by(item::Column::ItemType)
+        .into_model::<Row>()
+        .all(db)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ItemTypeCount {
+            project_id: r.project_id,
+            item_type: r.item_type,
+            count: r.count as u64,
+        })
+        .collect())
+}
+
+/// Count draft notes (non-submitted) grouped by (project_id, item_type).
+/// Returns `ItemTypeCount` with `item_type` always set to `"note"`.
+pub async fn count_draft_notes_grouped(
+    db: &DatabaseConnection,
+) -> Result<Vec<ItemTypeCount>, sea_orm::DbErr> {
+    use crate::enums::ItemTypeData;
+    use std::collections::HashMap;
+
+    let notes = item::Entity::find()
+        .filter(item::Column::ItemType.eq(ItemType::Note))
+        .filter(item::Column::ItemStatus.eq(ItemStatus::Pending))
+        .all(db)
+        .await?;
+
+    let mut counts: HashMap<String, u64> = HashMap::new();
+    for note in notes {
+        let is_draft = note
+            .parse_type_data()
+            .ok()
+            .and_then(|td| match td {
+                ItemTypeData::Note(n) => Some(n.draft_status),
+                _ => None,
+            })
+            .map(|s| s != DraftIssueStatus::Submitted)
+            .unwrap_or(false);
+        if is_draft {
+            *counts.entry(note.project_id.clone()).or_default() += 1;
+        }
+    }
+
+    Ok(counts
+        .into_iter()
+        .map(|(project_id, count)| ItemTypeCount {
+            project_id,
+            item_type: "note".to_string(),
+            count,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -868,6 +1026,336 @@ mod tests {
             .await;
 
         let counts = count_dismissed_grouped(&db).await.unwrap();
+        assert!(counts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn count_pending_by_type_groups_by_project() {
+        let db = setup_test_db().await;
+        let connector = ConnectorFactory::default().create(&db).await;
+        let project_a = ProjectFactory::default()
+            .name("project-a")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+        let project_b = ProjectFactory::default()
+            .name("project-b")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+
+        ItemFactory::new(&project_a.id, 1)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 2)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 3)
+            .item_type(ItemType::PullRequest)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_b.id, 4)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        // Dismissed should not be counted
+        ItemFactory::new(&project_a.id, 5)
+            .item_type(ItemType::Issue)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+
+        let counts = count_pending_by_type(&db).await.unwrap();
+
+        let a_issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a_issues, 2);
+
+        let a_prs: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id && c.item_type == "pr")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a_prs, 1);
+
+        let b_issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_b.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(b_issues, 1);
+    }
+
+    #[tokio::test]
+    async fn count_starred_pending_groups_by_project() {
+        let (db, project) = setup().await;
+        ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Issue)
+            .is_starred(true)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project.id, 2)
+            .item_type(ItemType::Issue)
+            .is_starred(true)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project.id, 3)
+            .item_type(ItemType::Issue)
+            .is_starred(false)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project.id, 4)
+            .item_type(ItemType::PullRequest)
+            .is_starred(true)
+            .create(&db)
+            .await;
+
+        let counts = count_starred_pending(&db).await.unwrap();
+
+        let issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(issues, 2);
+
+        let prs: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project.id && c.item_type == "pr")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(prs, 1);
+    }
+
+    #[tokio::test]
+    async fn count_analyzed_pending_groups_by_project() {
+        let (db, project) = setup().await;
+        let item1 = ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        let item2 = ItemFactory::new(&project.id, 2)
+            .item_type(ItemType::PullRequest)
+            .create(&db)
+            .await;
+        // Not analyzed
+        ItemFactory::new(&project.id, 3)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+
+        // Add chat messages to make items "analyzed"
+        ChatMessageFactory::new(&item1.id).create(&db).await;
+        ChatMessageFactory::new(&item2.id).create(&db).await;
+        // Multiple messages for same item should still count as 1
+        ChatMessageFactory::new(&item1.id).create(&db).await;
+
+        let counts = count_analyzed_pending(&db).await.unwrap();
+
+        let issues: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project.id && c.item_type == "issue")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(issues, 1);
+
+        let prs: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project.id && c.item_type == "pr")
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(prs, 1);
+    }
+
+    #[tokio::test]
+    async fn count_starred_excludes_dismissed() {
+        let (db, project) = setup().await;
+        ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Issue)
+            .is_starred(true)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project.id, 2)
+            .item_type(ItemType::Issue)
+            .is_starred(true)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+
+        let counts = count_starred_pending(&db).await.unwrap();
+        let total: u64 = counts.iter().map(|c| c.count).sum();
+        assert_eq!(total, 1);
+    }
+
+    #[tokio::test]
+    async fn count_analyzed_excludes_dismissed() {
+        let (db, project) = setup().await;
+        let item1 = ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        let item2 = ItemFactory::new(&project.id, 2)
+            .item_type(ItemType::Issue)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+
+        ChatMessageFactory::new(&item1.id).create(&db).await;
+        ChatMessageFactory::new(&item2.id).create(&db).await;
+
+        let counts = count_analyzed_pending(&db).await.unwrap();
+        let total: u64 = counts.iter().map(|c| c.count).sum();
+        assert_eq!(total, 1);
+    }
+
+    #[tokio::test]
+    async fn count_analyzed_multi_project() {
+        let db = setup_test_db().await;
+        let connector = ConnectorFactory::default().create(&db).await;
+        let project_a = ProjectFactory::default()
+            .name("project-a")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+        let project_b = ProjectFactory::default()
+            .name("project-b")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+
+        let item_a = ItemFactory::new(&project_a.id, 1)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+        let item_b = ItemFactory::new(&project_b.id, 2)
+            .item_type(ItemType::PullRequest)
+            .create(&db)
+            .await;
+
+        ChatMessageFactory::new(&item_a.id).create(&db).await;
+        ChatMessageFactory::new(&item_b.id).create(&db).await;
+
+        let counts = count_analyzed_pending(&db).await.unwrap();
+
+        let a: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id)
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a, 1);
+
+        let b: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_b.id)
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(b, 1);
+    }
+
+    #[tokio::test]
+    async fn count_draft_notes_grouped_by_project() {
+        let db = setup_test_db().await;
+        let connector = ConnectorFactory::default().create(&db).await;
+        let project_a = ProjectFactory::default()
+            .name("project-a")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+        let project_b = ProjectFactory::default()
+            .name("project-b")
+            .connector_id(&connector.id)
+            .create(&db)
+            .await;
+
+        // Project A: 2 draft notes, 1 submitted note
+        ItemFactory::new(&project_a.id, 1)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Draft)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 2)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Ready)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project_a.id, 3)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Submitted)
+            .create(&db)
+            .await;
+
+        // Project B: 1 draft note
+        ItemFactory::new(&project_b.id, 4)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Draft)
+            .create(&db)
+            .await;
+
+        // Non-note item should not appear
+        ItemFactory::new(&project_a.id, 5)
+            .item_type(ItemType::Issue)
+            .create(&db)
+            .await;
+
+        let counts = count_draft_notes_grouped(&db).await.unwrap();
+
+        let a_notes: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_a.id)
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(a_notes, 2); // draft + ready, not submitted
+
+        let b_notes: u64 = counts
+            .iter()
+            .filter(|c| c.project_id == project_b.id)
+            .map(|c| c.count)
+            .sum();
+        assert_eq!(b_notes, 1);
+
+        // All entries should have item_type = "note"
+        assert!(counts.iter().all(|c| c.item_type == "note"));
+    }
+
+    #[tokio::test]
+    async fn count_draft_notes_excludes_dismissed() {
+        let (db, project) = setup().await;
+        ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Draft)
+            .create(&db)
+            .await;
+        ItemFactory::new(&project.id, 2)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Draft)
+            .item_status(ItemStatus::Dismissed)
+            .dismissed_at(now())
+            .create(&db)
+            .await;
+
+        let counts = count_draft_notes_grouped(&db).await.unwrap();
+        let total: u64 = counts.iter().map(|c| c.count).sum();
+        assert_eq!(total, 1);
+    }
+
+    #[tokio::test]
+    async fn count_draft_notes_empty_when_all_submitted() {
+        let (db, project) = setup().await;
+        ItemFactory::new(&project.id, 1)
+            .item_type(ItemType::Note)
+            .draft_status(DraftIssueStatus::Submitted)
+            .create(&db)
+            .await;
+
+        let counts = count_draft_notes_grouped(&db).await.unwrap();
         assert!(counts.is_empty());
     }
 }

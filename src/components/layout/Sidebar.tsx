@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -45,6 +50,7 @@ import {
   Moon,
   Monitor,
   StickyNote,
+  Menu,
 } from "lucide-react";
 import type { ItemTypeFilter } from "@/types";
 import type { ThemePreference } from "@/stores/appStore";
@@ -71,45 +77,44 @@ const typeFilters: { value: ItemTypeFilter; label: string; icon: React.ReactNode
 
 export function Sidebar() {
   const { projects, selectedProjectIds, toggleProjectSelection, clearProjectSelection, fetchProjects } = useProjects();
-  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, analyzedItemIds, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, items, themePreference, setThemePreference, refreshInbox, dismissedCounts, draftNoteCount } = useAppStore();
+  const { setItems, itemTypeFilter, setItemTypeFilter, setCurrentPage, showAnalyzedOnly, setShowAnalyzedOnly, showStarredOnly, setShowStarredOnly, showDismissedOnly, setShowDismissedOnly, themePreference, setThemePreference, refreshInbox, dismissedCounts, itemTypeCounts, starredCounts, analyzedCounts, draftNoteCounts } = useAppStore();
   const [version, setVersion] = useState("");
-  // Items filtered by project + type filter (for "Show Only" counters)
-  const baseFilteredItems = useMemo(() => {
-    let result = items;
-    if (selectedProjectIds.length > 0) {
-      const selected = new Set(selectedProjectIds);
-      result = result.filter((i) => selected.has(i.project_id));
-    }
-    if (itemTypeFilter !== "all") {
-      result = result.filter((i) => i.item_type === itemTypeFilter);
-    }
-    return result;
-  }, [items, selectedProjectIds, itemTypeFilter]);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
 
-  const noteCount = draftNoteCount;
-  const projectFilteredItems = useMemo(() => {
-    if (selectedProjectIds.length === 0) return items;
-    const selected = new Set(selectedProjectIds);
-    return items.filter((i) => selected.has(i.project_id));
-  }, [items, selectedProjectIds]);
-  const issueCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "issue").length, [projectFilteredItems]);
-  const prCount = useMemo(() => projectFilteredItems.filter((i) => i.item_type === "pr").length, [projectFilteredItems]);
-  const starredCount = useMemo(() => baseFilteredItems.filter((i) => i.is_starred).length, [baseFilteredItems]);
-  const analyzedCount = useMemo(() => {
-    const analyzed = baseFilteredItems.filter((i) => analyzedItemIds.has(i.id));
-    const readyNotes = baseFilteredItems.filter((i) => i.item_type === "note" && i.type_data.kind === "note" && i.type_data.draft_status === "ready" && !analyzedItemIds.has(i.id));
-    return analyzed.length + readyNotes.length;
-  }, [baseFilteredItems, analyzedItemIds]);
-  const dismissedCount = useMemo(() => {
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebar-collapsed", String(next));
+      return next;
+    });
+  };
+
+  // Helper to sum grouped counts with project + type filtering
+  const sumCounts = useMemo(() => {
     const selectedSet = selectedProjectIds.length > 0 ? new Set(selectedProjectIds) : null;
-    return dismissedCounts
-      .filter((c) => {
-        if (selectedSet && !selectedSet.has(c.project_id)) return false;
-        if (itemTypeFilter !== "all" && c.item_type !== itemTypeFilter) return false;
-        return true;
-      })
-      .reduce((sum, c) => sum + c.count, 0);
-  }, [dismissedCounts, selectedProjectIds, itemTypeFilter]);
+    return (counts: { project_id: string; item_type: string; count: number }[], typeFilter?: string) => {
+      return counts
+        .filter((c) => {
+          if (selectedSet && !selectedSet.has(c.project_id)) return false;
+          if (typeFilter && typeFilter !== "all" && c.item_type !== typeFilter) return false;
+          return true;
+        })
+        .reduce((sum, c) => sum + c.count, 0);
+    };
+  }, [selectedProjectIds]);
+
+  const noteCount = sumCounts(draftNoteCounts);
+
+  // Filter section counters (filtered by selected projects, NOT by type filter)
+  const issueCount = sumCounts(itemTypeCounts, "issue");
+  const prCount = sumCounts(itemTypeCounts, "pr");
+  const discussionCount = sumCounts(itemTypeCounts, "discussion");
+  const allCount = issueCount + prCount + discussionCount + noteCount;
+
+  // Show Only section counters (filtered by selected projects AND type filter)
+  const starredCount = sumCounts(starredCounts, itemTypeFilter);
+  const analyzedCount = sumCounts(analyzedCounts, itemTypeFilter);
+  const dismissedCount = sumCounts(dismissedCounts, itemTypeFilter);
 
   useEffect(() => {
     getVersion().then(setVersion);
@@ -119,9 +124,187 @@ export function Sidebar() {
     setItemTypeFilter(value);
   };
 
+  // Collapsed: icon-only sidebar
+  if (collapsed) {
+    return (
+      <div className="flex h-full w-[52px] shrink-0 flex-col border-r bg-muted/40">
+        <div className="flex h-14 items-center justify-center border-b">
+          <button
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={toggleCollapsed}
+          >
+            <Menu className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center gap-1 py-2">
+          {typeFilters.map((f) => {
+            const badge = f.value === "note" ? noteCount : f.value === "issue" ? issueCount : f.value === "pr" ? prCount : 0;
+            return (
+              <Tooltip key={f.value}>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                      itemTypeFilter === f.value
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    }`}
+                    onClick={() => handleTypeFilterClick(f.value)}
+                  >
+                    {f.icon}
+                    {badge > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-semibold text-primary-foreground">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{f.label}</TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+
+        <Separator className="mx-2" />
+
+        <div className="flex flex-col items-center gap-1 py-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  showAnalyzedOnly ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`}
+                onClick={() => {
+                  const next = !showAnalyzedOnly;
+                  setShowAnalyzedOnly(next);
+                  if (next) { setShowStarredOnly(false); setShowDismissedOnly(false); }
+                }}
+              >
+                <Sparkles className="h-4 w-4" />
+                {analyzedCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-semibold text-primary-foreground">
+                    {analyzedCount > 99 ? "99+" : analyzedCount}
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">AI Analyzed</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  showStarredOnly ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`}
+                onClick={() => {
+                  const next = !showStarredOnly;
+                  setShowStarredOnly(next);
+                  if (next) { setShowAnalyzedOnly(false); setShowDismissedOnly(false); }
+                }}
+              >
+                <Star className="h-4 w-4" />
+                {starredCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-semibold text-primary-foreground">
+                    {starredCount > 99 ? "99+" : starredCount}
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Starred</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`relative flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  showDismissedOnly ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`}
+                onClick={() => {
+                  const next = !showDismissedOnly;
+                  setShowDismissedOnly(next);
+                  if (next) { setShowAnalyzedOnly(false); setShowStarredOnly(false); }
+                  refreshInbox();
+                }}
+              >
+                <EyeOff className="h-4 w-4" />
+                {dismissedCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[10px] font-semibold text-primary-foreground">
+                    {dismissedCount > 99 ? "99+" : dismissedCount}
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Dismissed</TooltipContent>
+          </Tooltip>
+        </div>
+
+        <Separator className="mx-2" />
+
+        <div className="flex flex-1 flex-col items-center gap-1 overflow-hidden py-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  selectedProjectIds.length === 0 ? "bg-secondary text-secondary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                }`}
+                onClick={() => clearProjectSelection()}
+              >
+                <Inbox className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">All Projects</TooltipContent>
+          </Tooltip>
+          {projects.map((project) => {
+            const isSelected = selectedProjectIds.includes(project.id);
+            const initials = project.name.slice(0, 2).toUpperCase();
+            return (
+              <Tooltip key={project.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`flex h-8 w-8 items-center justify-center rounded-md text-[10px] font-bold transition-colors ${
+                      isSelected
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    }${!project.sync_enabled ? " opacity-50" : ""}`}
+                    onClick={() => toggleProjectSelection(project.id)}
+                  >
+                    {initials}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{project.owner}/{project.name}</TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+
+        <Separator className="mx-2" />
+
+        <div className="flex flex-col items-center gap-1 p-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setCurrentPage("settings")}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Settings</TooltipContent>
+          </Tooltip>
+        </div>
+      </div>
+    );
+  }
+
+  // Expanded: full sidebar
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-muted/40">
+    <div className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/40">
       <div className="flex h-14 items-center gap-2 border-b px-4">
+        <button
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          onClick={toggleCollapsed}
+        >
+          <Menu className="h-4 w-4" />
+        </button>
         <img src="/app-icon.png" alt="" className="h-6 w-6" />
         <h1 className="text-sm font-bold tracking-tight">Ossue</h1>
       </div>
@@ -141,6 +324,11 @@ export function Sidebar() {
             >
               {f.icon}
               {f.label}
+              {f.value === "all" && allCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {allCount}
+                </span>
+              )}
               {f.value === "note" && noteCount > 0 && (
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500/15 dark:bg-amber-400/15 px-1 text-[10px] font-semibold tabular-nums text-amber-600 dark:text-amber-400">
                   {noteCount}
@@ -154,6 +342,11 @@ export function Sidebar() {
               {f.value === "pr" && prCount > 0 && (
                 <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500/15 dark:bg-blue-400/15 px-1 text-[10px] font-semibold tabular-nums text-blue-600 dark:text-blue-400">
                   {prCount}
+                </span>
+              )}
+              {f.value === "discussion" && discussionCount > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-green-500/15 dark:bg-green-400/15 px-1 text-[10px] font-semibold tabular-nums text-green-600 dark:text-green-400">
+                  {discussionCount}
                 </span>
               )}
             </Button>
@@ -341,7 +534,7 @@ export function Sidebar() {
 
       <Separator />
 
-      <div className="p-3 flex flex-col gap-1">
+      <div className="flex flex-col gap-1 p-3">
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"

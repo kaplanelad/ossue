@@ -1,11 +1,13 @@
 import { create } from "zustand";
-import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi, getDraftIssueCount } from "@/lib/tauri";
-import type { Item, ItemTypeFilter, DismissedCount } from "@/types";
+import { listItems as listItemsApi, listDismissedItems as listDismissedItemsApi } from "@/lib/tauri";
+import type { Item, ItemTypeFilter, DismissedCount, ItemTypeCount } from "@/types";
 import { useProjectStore } from "./projectStore";
 
 interface ItemState {
   // Items
   items: Item[];
+  /** Accumulated cache of all items seen across filter switches, used for cross-type linking */
+  allItemsCache: Map<string, Item>;
   selectedItemId: string | null;
   itemTypeFilter: ItemTypeFilter;
   setItems: (items: Item[]) => void;
@@ -40,8 +42,17 @@ interface ItemState {
   // Dismissed counts (per project+type)
   dismissedCounts: DismissedCount[];
 
-  // Persistent note count (independent of type filter)
-  draftNoteCount: number;
+  // Item type counts (independent of type filter)
+  itemTypeCounts: ItemTypeCount[];
+
+  // Starred counts (per project+type)
+  starredCounts: ItemTypeCount[];
+
+  // Analyzed counts (per project+type)
+  analyzedCounts: ItemTypeCount[];
+
+  // Draft note counts (per project)
+  draftNoteCounts: ItemTypeCount[];
 
   // Pagination
   nextCursor: string | null;
@@ -54,17 +65,28 @@ interface ItemState {
 
 export const useItemStore = create<ItemState>((set) => ({
   items: [],
+  allItemsCache: new Map(),
   selectedItemId: null,
   itemTypeFilter: "all",
-  setItems: (items) => set({ items }),
+  setItems: (items) => set((state) => {
+    const cache = new Map(state.allItemsCache);
+    for (const item of items) cache.set(item.id, item);
+    return { items, allItemsCache: cache };
+  }),
   setSelectedItemId: (id) => set({ selectedItemId: id }),
   setItemTypeFilter: (filter) => set({ itemTypeFilter: filter, selectedItemIds: [], selectedItemId: null }),
   updateItem: (id, updates) =>
-    set((state) => ({
-      items: state.items.map((item) =>
-        item.id === id ? { ...item, ...updates } : item
-      ),
-    })),
+    set((state) => {
+      const cache = new Map(state.allItemsCache);
+      const cached = cache.get(id);
+      if (cached) cache.set(id, { ...cached, ...updates });
+      return {
+        items: state.items.map((item) =>
+          item.id === id ? { ...item, ...updates } : item
+        ),
+        allItemsCache: cache,
+      };
+    }),
   removeItem: (id) =>
     set((state) => ({
       items: state.items.filter((item) => item.id !== id),
@@ -128,7 +150,13 @@ export const useItemStore = create<ItemState>((set) => ({
 
   dismissedCounts: [],
 
-  draftNoteCount: 0,
+  itemTypeCounts: [],
+
+  starredCounts: [],
+
+  analyzedCounts: [],
+
+  draftNoteCounts: [],
 
   nextCursor: null,
   hasMore: false,
@@ -146,29 +174,34 @@ export const useItemStore = create<ItemState>((set) => ({
       const starredOnly = filters?.starredOnly ?? itemState.showStarredOnly;
 
       const searchQuery = itemState.searchQuery.trim() || undefined;
-      const [response, noteCount] = await Promise.all([
-        itemState.showDismissedOnly
-          ? listDismissedItemsApi({
-              projectId: projectIds?.[0],
-              itemType,
-              searchQuery,
-              pageSize: 50,
-            })
-          : listItemsApi({
-              projectId: projectIds?.[0],
-              itemType,
-              starredOnly: starredOnly || undefined,
-              searchQuery,
-              pageSize: 50,
-            }),
-        getDraftIssueCount(),
-      ]);
-      set({
-        items: response.items,
-        nextCursor: response.next_cursor,
-        hasMore: response.has_more,
-        dismissedCounts: response.dismissed_counts,
-        draftNoteCount: noteCount,
+      const response = itemState.showDismissedOnly
+        ? await listDismissedItemsApi({
+            projectId: projectIds?.[0],
+            itemType,
+            searchQuery,
+            pageSize: 50,
+          })
+        : await listItemsApi({
+            projectId: projectIds?.[0],
+            itemType,
+            starredOnly: starredOnly || undefined,
+            searchQuery,
+            pageSize: 50,
+          });
+      set((state) => {
+        const cache = new Map(state.allItemsCache);
+        for (const item of response.items) cache.set(item.id, item);
+        return {
+          items: response.items,
+          allItemsCache: cache,
+          nextCursor: response.next_cursor,
+          hasMore: response.has_more,
+          dismissedCounts: response.dismissed_counts,
+          itemTypeCounts: response.item_type_counts,
+          starredCounts: response.starred_counts,
+          analyzedCounts: response.analyzed_counts,
+          draftNoteCounts: response.draft_note_counts,
+        };
       });
     } catch (e) {
       console.error("Failed to fetch inbox:", e);
@@ -203,13 +236,21 @@ export const useItemStore = create<ItemState>((set) => ({
             cursor: state.nextCursor,
             pageSize: 50,
           });
-      set((prev) => ({
-        items: [...prev.items, ...response.items],
-        nextCursor: response.next_cursor,
-        hasMore: response.has_more,
-        dismissedCounts: response.dismissed_counts,
-        isLoadingMore: false,
-      }));
+      set((prev) => {
+        const cache = new Map(prev.allItemsCache);
+        for (const item of response.items) cache.set(item.id, item);
+        return {
+          items: [...prev.items, ...response.items],
+          allItemsCache: cache,
+          nextCursor: response.next_cursor,
+          hasMore: response.has_more,
+          dismissedCounts: response.dismissed_counts,
+          itemTypeCounts: response.item_type_counts,
+          starredCounts: response.starred_counts,
+          analyzedCounts: response.analyzed_counts,
+          isLoadingMore: false,
+        };
+      });
     } catch (e) {
       console.error("Failed to fetch more items:", e);
       set({ isLoadingMore: false });

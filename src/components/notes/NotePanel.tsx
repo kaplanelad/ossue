@@ -367,7 +367,7 @@ function ReadyActions({
   }, [input, isBusy, note.id, rawContent, refreshInbox, onRegenerate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && e.metaKey) {
       e.preventDefault();
       handleSend();
     }

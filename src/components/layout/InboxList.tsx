@@ -6,6 +6,7 @@ import { useItemStore } from "@/stores/itemStore";
 import { useDraftIssueStore } from "@/stores/draftIssueStore";
 import { useUiStore } from "@/stores/uiStore";
 import { InboxItem } from "@/components/inbox/InboxItem";
+import { extractLinkedIssueNumbers } from "@/lib/linkedItems";
 import { NoteItem } from "@/components/notes/NoteItem";
 import { BulkActionBar } from "@/components/inbox/BulkActionBar";
 import { NoteBulkActionBar } from "@/components/notes/NoteBulkActionBar";
@@ -38,13 +39,13 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
-import type { AnalysisAction } from "@/types";
+import type { AnalysisAction, Item } from "@/types";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 
 export function InboxList() {
   const { items, syncItems, isSyncing, syncDisabled, setSelectedItemId, selectedItemId, markRead, markUnread, deleteItem, restoreItem, fullSync } = useItems();
-  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
+  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, setItemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
   const {
     selectedNoteId,
     setSelectedNoteId,
@@ -128,6 +129,51 @@ export function InboxList() {
     }
     return result;
   }, [items, selectedProjectIds, itemTypeFilter, showAnalyzedOnly, analyzedItemIds, showStarredOnly]);
+
+  // Compute linked items map: itemId → linked Item[]
+  // Uses allItemsCache so links work even when filtered by type (e.g. Issues or PRs view)
+  const allItemsCache = useItemStore((s) => s.allItemsCache);
+  const linkedItemsMap = useMemo(() => {
+    const allItems = Array.from(allItemsCache.values());
+    const map = new Map<string, Item[]>();
+    // Index: projectId → externalId → Item
+    const byProjectAndNumber = new Map<string, Map<number, Item>>();
+    // Index: projectId → [PR items with refs]
+    const prsByProject = new Map<string, { pr: Item; refs: number[] }[]>();
+
+    for (const item of allItems) {
+      if (item.type_data.kind === "note") continue;
+      const key = item.project_id;
+      if (!byProjectAndNumber.has(key)) byProjectAndNumber.set(key, new Map());
+      byProjectAndNumber.get(key)!.set(item.type_data.external_id, item);
+
+      if (item.item_type === "pr" && item.body) {
+        const refs = extractLinkedIssueNumbers(item.body);
+        if (refs.length > 0) {
+          if (!prsByProject.has(key)) prsByProject.set(key, []);
+          prsByProject.get(key)!.push({ pr: item, refs });
+        }
+      }
+    }
+
+    // PR → linked issues
+    for (const [projId, prs] of prsByProject) {
+      const numIndex = byProjectAndNumber.get(projId);
+      if (!numIndex) continue;
+      for (const { pr, refs } of prs) {
+        const linked = refs.map((n) => numIndex.get(n)).filter((i): i is Item => !!i && i.id !== pr.id);
+        if (linked.length > 0) map.set(pr.id, linked);
+        // Issue → linking PRs (reverse)
+        for (const issue of linked) {
+          const existing = map.get(issue.id) ?? [];
+          if (!existing.some((i) => i.id === pr.id)) {
+            map.set(issue.id, [...existing, pr]);
+          }
+        }
+      }
+    }
+    return map;
+  }, [allItemsCache]);
 
   const selectedIdSet = useMemo(
     () => new Set(selectedItemIds),
@@ -240,6 +286,14 @@ export function InboxList() {
     clearNoteSelection();
     setSelectedItemId(id);
     await markRead(id);
+  };
+
+  const handleNavigateToLinkedItem = async (id: string) => {
+    // Switch to "all" filter so the linked item is visible regardless of current type filter
+    if (itemTypeFilter !== "all") {
+      setItemTypeFilter("all");
+    }
+    handleItemClick(id);
   };
 
   const handleToggleStar = async (item: { id: string; is_starred: boolean }) => {
@@ -863,6 +917,9 @@ export function InboxList() {
                           onDelete={() => deleteItem(item.id)}
                           onRestore={() => restoreItem(item.id)}
                           isDismissedView={showDismissedOnly}
+
+                    linkedItems={linkedItemsMap.get(item.id)}
+                    onNavigateToItem={handleNavigateToLinkedItem}
                         />
                       );
                     })}
@@ -918,6 +975,8 @@ export function InboxList() {
                     onDelete={() => deleteItem(item.id)}
                     onRestore={() => restoreItem(item.id)}
                     isDismissedView={showDismissedOnly}
+                    linkedItems={linkedItemsMap.get(item.id)}
+                    onNavigateToItem={handleNavigateToLinkedItem}
                   />
                 );
               })
