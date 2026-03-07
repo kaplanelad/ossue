@@ -4,15 +4,17 @@ import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Trash2, X, Copy, Check, CircleDot, GitPullRequest, Link2 } from "lucide-react";
+import { ExternalLink, Trash2, X, Copy, Check, CircleDot, GitPullRequest, Link2, Maximize2, Minimize2 } from "lucide-react";
 import { findLinkedItems } from "@/lib/linkedItems";
 import type { Item } from "@/types";
 
 interface ChatPanelProps {
-  width: number;
+  width?: number;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export function ChatPanel({ width }: ChatPanelProps) {
+export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanelProps) {
   const { selectedItemId, items, setSelectedItemId } = useAppStore();
   const selectedItem = items.find((i) => i.id === selectedItemId);
 
@@ -31,6 +33,7 @@ export function ChatPanel({ width }: ChatPanelProps) {
     isStreaming,
     isLoading,
     analysisStatus,
+    currentStepIndex,
     sendMessage,
     analyzeWithAction,
     clearMessages,
@@ -39,7 +42,10 @@ export function ChatPanel({ width }: ChatPanelProps) {
   if (!selectedItem) return null;
 
   return (
-    <div className="flex h-full shrink-0 flex-col overflow-hidden" style={{ width }}>
+    <div
+      className={`flex h-full flex-col overflow-hidden ${isFullscreen ? "flex-1" : "shrink-0"}`}
+      style={isFullscreen ? undefined : { width }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="min-w-0 flex-1">
@@ -76,11 +82,29 @@ export function ChatPanel({ width }: ChatPanelProps) {
               <Trash2 className="h-4 w-4" />
             </Button>
           )}
+          {onToggleFullscreen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={onToggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setSelectedItemId(null)}
+            onClick={() => {
+              if (isFullscreen && onToggleFullscreen) onToggleFullscreen();
+              setSelectedItemId(null);
+            }}
             aria-label="Close panel"
           >
             <X className="h-4 w-4" />
@@ -117,15 +141,17 @@ export function ChatPanel({ width }: ChatPanelProps) {
         isStreaming={isStreaming}
         isLoading={isLoading}
         analysisStatus={analysisStatus}
-        itemType={selectedItem.item_type}
+        currentStepIndex={currentStepIndex}
         onAnalyzeAction={analyzeWithAction}
+        itemId={selectedItem.id}
+        itemType={selectedItem.item_type}
+        onSendFollowUp={sendMessage}
       />
 
       {/* Input */}
       <ChatInput
         onSend={sendMessage}
         disabled={isLoading || isStreaming}
-        itemType={selectedItem.item_type}
         onAnalyzeAction={analyzeWithAction}
         onClearChat={clearMessages}
         hasMessages={messages.length > 0}

@@ -9,7 +9,7 @@ export interface ChatMessage {
   model: string | null;
 }
 
-export type AnalysisAction = "review" | "draft_response" | "summarize" | "triage" | "check_impact";
+export type AnalysisAction = "analyze" | "draft_response";
 
 export interface AnalyzeActionRequest {
   item_id: string;

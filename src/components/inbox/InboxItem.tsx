@@ -10,7 +10,7 @@ import {
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { CircleDot, GitPullRequest, MessageSquare, StickyNote, MailOpen, EyeOff, Inbox, Loader2, Sparkles, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { CircleDot, GitPullRequest, MessageSquare, StickyNote, MailOpen, EyeOff, Inbox, Loader2, Sparkles, ChevronDown, ChevronUp, Star, Trash2 } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 function stripMarkdown(text: string): string {
@@ -60,12 +60,13 @@ interface InboxItemProps {
   onMarkUnread: () => void;
   onDelete: () => void;
   onRestore?: () => void;
+  onClearHistory?: () => void;
   isDismissedView?: boolean;
   linkedItems?: Item[];
   onNavigateToItem?: (id: string) => void;
 }
 
-export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, isDismissedView, linkedItems, onNavigateToItem }, ref) {
+export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxItem({ item, repoName, platform, isSelected, isAnalyzing, hasAnalysis, isChecked, isFocused, onToggleSelect, onClick, onToggleStar, onMarkUnread, onDelete, onRestore, onClearHistory, isDismissedView, linkedItems, onNavigateToItem }, ref) {
   const [bodyExpanded, setBodyExpanded] = useState(false);
   const timeAgo = formatTimeAgo(item.updated_at);
   const strippedBody = item.body ? stripMarkdown(item.body) : "";
@@ -201,6 +202,12 @@ export const InboxItem = forwardRef<HTMLElement, InboxItemProps>(function InboxI
           <MailOpen className="mr-2 h-4 w-4" />
           Mark as Unread
         </ContextMenuItem>
+        {hasAnalysis && onClearHistory && (
+          <ContextMenuItem onClick={onClearHistory}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Clear AI History
+          </ContextMenuItem>
+        )}
         {isDismissedView && onRestore ? (
           <ContextMenuItem onClick={onRestore}>
             <Inbox className="mr-2 h-4 w-4" />

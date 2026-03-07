@@ -38,6 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useChatStore } from "@/stores/chatStore";
 import * as api from "@/lib/tauri";
 import type { AnalysisAction, Item } from "@/types";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -45,7 +46,7 @@ import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDi
 
 export function InboxList() {
   const { items, syncItems, isSyncing, syncDisabled, setSelectedItemId, selectedItemId, markRead, markUnread, deleteItem, restoreItem, fullSync } = useItems();
-  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, setItemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
+  const { selectedProjectIds, projects, syncingProjects, activeAnalyses, selectedItemIds, toggleItemSelection, selectAllItems, clearSelection, startAnalysis, clearAnalysis, analyzedItemIds, removeAnalyzedItemId, showAnalyzedOnly, showStarredOnly, showDismissedOnly, updateItem, itemTypeFilter, setItemTypeFilter, refreshInbox, hasMore, isLoadingMore, fetchMore, searchQuery, setSearchQuery } = useAppStore();
   const {
     selectedNoteId,
     setSelectedNoteId,
@@ -304,6 +305,19 @@ export function InboxList() {
     } catch (err) {
       updateItem(item.id, { is_starred: item.is_starred });
       toast.error("Failed to update star", { description: errorMessage(err) });
+    }
+  };
+
+  const handleClearHistory = async (itemId: string) => {
+    try {
+      await api.clearChat(itemId);
+      removeAnalyzedItemId(itemId);
+      clearAnalysis(itemId);
+      if (selectedItemId === itemId) {
+        useChatStore.getState().clearChat();
+      }
+    } catch (err) {
+      toast.error("Failed to clear AI history", { description: errorMessage(err) });
     }
   };
 
@@ -916,6 +930,7 @@ export function InboxList() {
                           onMarkUnread={() => markUnread(item.id)}
                           onDelete={() => deleteItem(item.id)}
                           onRestore={() => restoreItem(item.id)}
+                          onClearHistory={() => handleClearHistory(item.id)}
                           isDismissedView={showDismissedOnly}
 
                     linkedItems={linkedItemsMap.get(item.id)}
@@ -974,6 +989,7 @@ export function InboxList() {
                     onMarkUnread={() => markUnread(item.id)}
                     onDelete={() => deleteItem(item.id)}
                     onRestore={() => restoreItem(item.id)}
+                    onClearHistory={() => handleClearHistory(item.id)}
                     isDismissedView={showDismissedOnly}
                     linkedItems={linkedItemsMap.get(item.id)}
                     onNavigateToItem={handleNavigateToLinkedItem}

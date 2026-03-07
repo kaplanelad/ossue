@@ -87,13 +87,16 @@ interface AppState {
   startAnalysis: (itemId: string) => void;
   setAnalysisStatus: (itemId: string, status: string) => void;
   appendAnalysisContent: (itemId: string, chunk: string) => void;
+  setCurrentStepLabel: (itemId: string, label: string) => void;
   endAnalysis: (itemId: string) => void;
   clearAnalysis: (itemId: string) => void;
+  resetStreamingContent: (itemId: string) => void;
 
   // Analyzed item tracking
   analyzedItemIds: Set<string>;
   setAnalyzedItemIds: (ids: string[]) => void;
   addAnalyzedItemId: (id: string) => void;
+  removeAnalyzedItemId: (id: string) => void;
 
   // Search
   searchQuery: string;
@@ -195,11 +198,14 @@ function getCompositeState(): AppState {
     startAnalysis: analysis.startAnalysis,
     setAnalysisStatus: analysis.setAnalysisStatus,
     appendAnalysisContent: analysis.appendAnalysisContent,
+    setCurrentStepLabel: analysis.setCurrentStepLabel,
     endAnalysis: analysis.endAnalysis,
     clearAnalysis: analysis.clearAnalysis,
+    resetStreamingContent: analysis.resetStreamingContent,
     analyzedItemIds: analysis.analyzedItemIds,
     setAnalyzedItemIds: analysis.setAnalyzedItemIds,
     addAnalyzedItemId: analysis.addAnalyzedItemId,
+    removeAnalyzedItemId: analysis.removeAnalyzedItemId,
 
     // Search
     searchQuery: item.searchQuery,

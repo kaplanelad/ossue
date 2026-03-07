@@ -19,6 +19,8 @@ export function useChat(itemId: string | null) {
   const streamingContent = analysis?.content ?? "";
   const isStreaming = analysis?.isStreaming ?? false;
   const analysisStatus = analysis?.status ?? null;
+  const currentStepIndex = analysis?.currentStepIndex ?? 0;
+  const currentStepLabel = analysis?.currentStepLabel ?? null;
 
   // Load chat history when item changes
   useEffect(() => {
@@ -117,12 +119,18 @@ export function useChat(itemId: string | null) {
       setIsLoading(true);
       startAnalysis(itemId);
       try {
+        // Messages arrive incrementally via events during the command execution
         await api.analyzeItemAction({ item_id: itemId, action });
+        // Reload from DB for consistency (catches any missed events)
         const msgs = await api.getChatMessages(itemId);
         if (useAppStore.getState().selectedItemId === itemId) {
           setMessages(msgs);
         }
-        clearAnalysis(itemId);
+        // For multi-step analyze, endAnalysis is handled by "ai-analysis-complete" event.
+        // For single-step draft_response, clear here.
+        if (action !== "analyze") {
+          clearAnalysis(itemId);
+        }
       } catch (err) {
         console.error("Failed to analyze item:", err);
         toast.error(errorMessage(err));
@@ -136,12 +144,15 @@ export function useChat(itemId: string | null) {
     [itemId, setIsLoading, setMessages, startAnalysis, clearAnalysis]
   );
 
+  const removeAnalyzedItemId = useAppStore((s) => s.removeAnalyzedItemId);
+
   const clearMessages = useCallback(async () => {
     if (!itemId) return;
     await api.clearChat(itemId);
     clearChat();
     clearAnalysis(itemId);
-  }, [itemId, clearChat, clearAnalysis]);
+    removeAnalyzedItemId(itemId);
+  }, [itemId, clearChat, clearAnalysis, removeAnalyzedItemId]);
 
   return {
     messages,
@@ -149,6 +160,8 @@ export function useChat(itemId: string | null) {
     isStreaming,
     isLoading,
     analysisStatus,
+    currentStepIndex,
+    currentStepLabel,
     sendMessage,
     analyzeItem,
     analyzeWithAction,

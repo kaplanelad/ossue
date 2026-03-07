@@ -457,7 +457,7 @@ impl AnalysisHistoryFactory {
     pub fn new(item_id: &str) -> Self {
         Self {
             item_id: item_id.to_string(),
-            action_type: ActionType::Review,
+            action_type: ActionType::Analyze,
             provider_mode: ProviderMode::Api,
         }
     }

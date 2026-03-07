@@ -123,6 +123,12 @@ export const analyzeItemAction = (request: AnalyzeActionRequest) =>
   invoke<ChatMessage>("analyze_item_action", { request });
 export const getAnalyzedItemIds = () =>
   invoke<string[]>("get_analyzed_item_ids");
+export const postItemComment = (itemId: string, comment: string) =>
+  invoke<void>("post_item_comment", { itemId, comment });
+export const mergePullRequest = (itemId: string) =>
+  invoke<void>("merge_pull_request", { itemId });
+export const closeItem = (itemId: string) =>
+  invoke<void>("close_item", { itemId });
 
 // Project notes commands
 export const listProjectNotes = (projectId: string) =>

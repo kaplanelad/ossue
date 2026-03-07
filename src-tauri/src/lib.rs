@@ -159,6 +159,9 @@ pub fn run() {
             commands::ai::analyze_item_action,
             commands::ai::clear_chat,
             commands::ai::get_analyzed_item_ids,
+            commands::ai::post_item_comment,
+            commands::ai::merge_pull_request,
+            commands::ai::close_item,
             // Project Notes
             commands::project_notes::list_project_notes,
             commands::project_notes::add_project_note,

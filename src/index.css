@@ -177,6 +177,17 @@
 .dark .draft-priority-medium { color: oklch(0.828 0.189 84.429); }
 .dark .draft-priority-low { color: oklch(0.696 0.17 162.48); }
 
+/* ── Analysis step streaming pulse ────────────────────────── */
+
+@keyframes step-pulse {
+  0%, 100% { border-color: oklch(0.588 0.186 26 / 20%); }
+  50%      { border-color: oklch(0.588 0.186 26 / 50%); }
+}
+
+.step-pulse {
+  animation: step-pulse 2s ease-in-out infinite;
+}
+
 /* ── Repository group animations ─────────────────────────── */
 
 @keyframes repo-group-enter {

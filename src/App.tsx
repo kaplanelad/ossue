@@ -36,6 +36,7 @@ function App() {
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH);
   const [isLoading, setIsLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [isChatFullscreen, setIsChatFullscreen] = useState(false);
   const isResizing = useRef(false);
 
   const initApp = useCallback(async () => {
@@ -80,10 +81,15 @@ function App() {
     initApp();
   }, [initApp]);
 
-  // Cmd+N to open create note dialog, Cmd+R to refresh, Cmd+1-5 to switch tabs
+  // Cmd+N to open create note dialog, Cmd+R to refresh, Cmd+1-5 to switch tabs, Escape to exit fullscreen
   useEffect(() => {
     const tabFilters = ["all", "note", "issue", "pr", "discussion"] as const;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isChatFullscreen) {
+        e.preventDefault();
+        setIsChatFullscreen(false);
+        return;
+      }
       if (!e.metaKey) return;
       if (e.key === "n") {
         e.preventDefault();
@@ -105,7 +111,7 @@ function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isChatFullscreen]);
 
   // Listen for DB init errors emitted from the backend
   useEffect(() => {
@@ -116,6 +122,11 @@ function App() {
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
+
+  // Exit fullscreen when panel closes
+  useEffect(() => {
+    if (!selectedItemId) setIsChatFullscreen(false);
+  }, [selectedItemId]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -181,18 +192,30 @@ function App() {
                   <UpdateBanner updateInfo={updateInfo} onDismiss={dismissUpdate} />
                 )}
               <div className="flex flex-1 overflow-hidden">
-                <Sidebar />
-                <InboxList />
+                {!(isChatFullscreen && showChatPanel) && (
+                  <>
+                    <Sidebar />
+                    <InboxList />
+                  </>
+                )}
                 {showRightPanel && (
                   <>
                     {/* Resize handle */}
-                    <div
-                      className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/10 active:bg-primary/20"
-                      onMouseDown={handleMouseDown}
-                    >
-                      <div className="h-8 w-0.5 rounded-full bg-border" />
-                    </div>
-                    {showChatPanel && <ChatPanel width={chatWidth} />}
+                    {!isChatFullscreen && (
+                      <div
+                        className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/10 active:bg-primary/20"
+                        onMouseDown={handleMouseDown}
+                      >
+                        <div className="h-8 w-0.5 rounded-full bg-border" />
+                      </div>
+                    )}
+                    {showChatPanel && (
+                      <ChatPanel
+                        width={isChatFullscreen ? undefined : chatWidth}
+                        isFullscreen={isChatFullscreen}
+                        onToggleFullscreen={() => setIsChatFullscreen((v) => !v)}
+                      />
+                    )}
                     {showNotePanel && <NotePanel width={chatWidth} />}
                   </>
                 )}

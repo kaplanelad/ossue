@@ -11,11 +11,8 @@ import {
 import {
   Send,
   Ellipsis,
-  Search,
+  Sparkles,
   MessageSquare,
-  List,
-  Tag,
-  Zap,
   Trash2,
 } from "lucide-react";
 import type { AnalysisAction } from "@/types";
@@ -23,7 +20,6 @@ import type { AnalysisAction } from "@/types";
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
-  itemType: "issue" | "pr" | "discussion" | "note";
   onAnalyzeAction: (action: AnalysisAction) => void;
   onClearChat: () => void;
   hasMessages: boolean;
@@ -32,7 +28,6 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled,
-  itemType,
   onAnalyzeAction,
   onClearChat,
   hasMessages,
@@ -82,32 +77,14 @@ export function ChatInput({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="end">
-            {itemType === "pr" && (
-              <DropdownMenuItem onClick={() => onAnalyzeAction("review")}>
-                <Search className="h-4 w-4" />
-                Review Code
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem onClick={() => onAnalyzeAction("analyze")}>
+              <Sparkles className="h-4 w-4" />
+              Analyze
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onAnalyzeAction("draft_response")}>
               <MessageSquare className="h-4 w-4" />
               Draft Response
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onAnalyzeAction("summarize")}>
-              <List className="h-4 w-4" />
-              Summarize
-            </DropdownMenuItem>
-            {itemType === "issue" && (
-              <DropdownMenuItem onClick={() => onAnalyzeAction("triage")}>
-                <Tag className="h-4 w-4" />
-                Triage
-              </DropdownMenuItem>
-            )}
-            {itemType === "pr" && (
-              <DropdownMenuItem onClick={() => onAnalyzeAction("check_impact")}>
-                <Zap className="h-4 w-4" />
-                Check Impact
-              </DropdownMenuItem>
-            )}
             {hasMessages && (
               <>
                 <DropdownMenuSeparator />
