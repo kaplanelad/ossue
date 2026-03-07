@@ -5,7 +5,7 @@ import { UserMessage } from "./UserMessage";
 import { AnalysisReport } from "./AnalysisReport";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useAnalysisSteps } from "@/hooks/useAnalysisSteps";
 
 interface MessageListProps {
@@ -111,13 +111,8 @@ export function MessageList({
 
             {/* Loading indicator for follow-up */}
             {isLoading && !isStreaming && isAnalysisComplete && (
-              <div className="flex gap-2.5">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                </div>
-                <div className="flex items-center text-sm text-muted-foreground">
-                  Thinking...
-                </div>
+              <div className="text-sm">
+                <span className="thinking-spinner">Thinking…</span>
               </div>
             )}
           </>
@@ -146,13 +141,8 @@ export function MessageList({
               />
             )}
             {isLoading && !isStreaming && (
-              <div className="flex gap-2.5">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                </div>
-                <div className="flex items-center text-sm text-muted-foreground">
-                  {analysisStatus ?? "Thinking..."}
-                </div>
+              <div className="text-sm">
+                <span className="thinking-spinner">{analysisStatus ?? "Thinking…"}</span>
               </div>
             )}
           </>

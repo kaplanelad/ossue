@@ -177,6 +177,52 @@
 .dark .draft-priority-medium { color: oklch(0.828 0.189 84.429); }
 .dark .draft-priority-low { color: oklch(0.696 0.17 162.48); }
 
+/* ── Thinking spinner (Claude Code style) ────────────────── */
+
+@keyframes claude-spinner {
+  0%  { content: "·"; }
+  10% { content: "✢"; }
+  20% { content: "✳"; }
+  30% { content: "✶"; }
+  40% { content: "✻"; }
+  50% { content: "✽"; }
+  60% { content: "✻"; }
+  70% { content: "✶"; }
+  80% { content: "✳"; }
+  90% { content: "✢"; }
+}
+
+@keyframes claude-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+.thinking-spinner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(
+    90deg,
+    rgb(215, 119, 87) 40%,
+    rgb(235, 159, 127) 50%,
+    rgb(215, 119, 87) 60%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: claude-shimmer 3s ease-in-out infinite;
+}
+
+.thinking-spinner::before {
+  content: "·";
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  -webkit-text-fill-color: rgb(215, 119, 87);
+  animation: claude-spinner 2s steps(1) infinite;
+}
+
 /* ── Analysis step streaming pulse ────────────────────────── */
 
 @keyframes step-pulse {

@@ -72,7 +72,6 @@ export function useChat(itemId: string | null) {
       } catch (err) {
         console.error("Failed to send message:", err);
         toast.error(errorMessage(err));
-        clearAnalysis(itemId);
       } finally {
         useChatStore.getState().setIsLoading(itemId, false);
       }
