@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useItemStore } from "./itemStore";
 
 export interface AnalysisState {
   content: string;
@@ -103,13 +104,25 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
   analyzedItemIds: new Set<string>(),
   setAnalyzedItemIds: (ids) => set({ analyzedItemIds: new Set(ids) }),
   addAnalyzedItemId: (id) =>
-    set((state) => ({
-      analyzedItemIds: new Set([...state.analyzedItemIds, id]),
-    })),
+    set((state) => {
+      if (state.analyzedItemIds.has(id)) return state;
+      const itemState = useItemStore.getState();
+      const item = itemState.allItemsCache.get(id) ?? itemState.items.find((i) => i.id === id);
+      if (item) {
+        itemState.incrementAnalyzedCount(item.project_id, item.item_type);
+      }
+      return { analyzedItemIds: new Set([...state.analyzedItemIds, id]) };
+    }),
   removeAnalyzedItemId: (id) =>
     set((state) => {
+      if (!state.analyzedItemIds.has(id)) return state;
       const next = new Set(state.analyzedItemIds);
       next.delete(id);
+      const itemState = useItemStore.getState();
+      const item = itemState.allItemsCache.get(id) ?? itemState.items.find((i) => i.id === id);
+      if (item) {
+        itemState.decrementAnalyzedCount(item.project_id, item.item_type);
+      }
       return { analyzedItemIds: next };
     }),
 }));

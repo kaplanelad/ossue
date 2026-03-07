@@ -201,11 +201,13 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  --spinner-color: rgb(215, 119, 87);
+  --spinner-color-light: rgb(235, 159, 127);
   background: linear-gradient(
     90deg,
-    rgb(215, 119, 87) 40%,
-    rgb(235, 159, 127) 50%,
-    rgb(215, 119, 87) 60%
+    var(--spinner-color) 40%,
+    var(--spinner-color-light) 50%,
+    var(--spinner-color) 60%
   );
   background-size: 200% 100%;
   background-clip: text;
@@ -219,8 +221,28 @@
   display: inline-block;
   width: 1em;
   text-align: center;
-  -webkit-text-fill-color: rgb(215, 119, 87);
+  -webkit-text-fill-color: var(--spinner-color);
   animation: claude-spinner 2s steps(1) infinite;
+}
+
+.thinking-spinner-issue {
+  --spinner-color: rgb(34, 197, 94);
+  --spinner-color-light: rgb(74, 222, 128);
+}
+
+.thinking-spinner-pr {
+  --spinner-color: rgb(59, 130, 246);
+  --spinner-color-light: rgb(96, 165, 250);
+}
+
+.thinking-spinner-discussion {
+  --spinner-color: rgb(168, 85, 247);
+  --spinner-color-light: rgb(192, 132, 252);
+}
+
+.thinking-spinner-note {
+  --spinner-color: rgb(245, 158, 11);
+  --spinner-color-light: rgb(251, 191, 36);
 }
 
 /* ── Analysis step streaming pulse ────────────────────────── */

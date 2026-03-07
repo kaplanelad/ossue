@@ -110,9 +110,9 @@ export function MessageList({
             )}
 
             {/* Loading indicator for follow-up */}
-            {isLoading && !isStreaming && isAnalysisComplete && (
+            {isLoading && !streamingContent && isAnalysisComplete && (
               <div className="text-sm">
-                <span className="thinking-spinner">Thinking…</span>
+                <span className={`thinking-spinner thinking-spinner-${itemType}`}>Thinking…</span>
               </div>
             )}
           </>
@@ -142,7 +142,7 @@ export function MessageList({
             )}
             {isLoading && !isStreaming && (
               <div className="text-sm">
-                <span className="thinking-spinner">{analysisStatus ?? "Thinking…"}</span>
+                <span className={`thinking-spinner thinking-spinner-${itemType}`}>{analysisStatus ?? "Thinking…"}</span>
               </div>
             )}
           </>
