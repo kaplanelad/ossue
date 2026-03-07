@@ -35,7 +35,7 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
       return {
         activeAnalyses: {
           ...state.activeAnalyses,
-          [itemId]: { content: "", isStreaming: true, status: "Starting analysis...", currentStepIndex: 0, currentStepLabel: null },
+          [itemId]: { content: "", isStreaming: true, status: "Thinking…", currentStepIndex: 0, currentStepLabel: null },
         },
       };
     }),

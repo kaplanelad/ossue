@@ -56,6 +56,7 @@ export function AnalysisReport({
                 ? analysisStatus
                 : null
             }
+            itemType={itemType}
           />
         ))}
       </div>
