@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import * as api from "@/lib/tauri";
 import { LABEL_OPTIONS } from "@/lib/labels";
+import { EmptyState } from "@/components/shared/EmptyState";
 import type { Item } from "@/types";
 
 
@@ -187,11 +188,12 @@ function DraftView({ note }: { note: Item }) {
 
 function ProcessingView() {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-      <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      <p className="text-sm text-muted-foreground">Generating issue...</p>
-      <p className="text-xs text-muted-foreground/60">Ossue is paraphrasing your note</p>
-    </div>
+    <EmptyState
+      icon={Sparkles}
+      iconClassName="text-amber-500 dark:text-amber-400"
+      title="Generating issue..."
+      description="Ossue is paraphrasing your note"
+    />
   );
 }
 
