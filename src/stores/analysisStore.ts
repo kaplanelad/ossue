@@ -4,6 +4,8 @@ export interface AnalysisState {
   content: string;
   isStreaming: boolean;
   status: string | null;
+  currentStepIndex: number;
+  currentStepLabel: string | null;
 }
 
 interface AnalysisStoreState {
@@ -12,6 +14,7 @@ interface AnalysisStoreState {
   startAnalysis: (itemId: string) => void;
   setAnalysisStatus: (itemId: string, status: string) => void;
   appendAnalysisContent: (itemId: string, chunk: string) => void;
+  setCurrentStepLabel: (itemId: string, label: string) => void;
   endAnalysis: (itemId: string) => void;
   clearAnalysis: (itemId: string) => void;
   resetStreamingContent: (itemId: string) => void;
@@ -31,7 +34,7 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
       return {
         activeAnalyses: {
           ...state.activeAnalyses,
-          [itemId]: { content: "", isStreaming: true, status: "Starting analysis..." },
+          [itemId]: { content: "", isStreaming: true, status: "Starting analysis...", currentStepIndex: 0, currentStepLabel: null },
         },
       };
     }),
@@ -57,6 +60,17 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
         },
       };
     }),
+  setCurrentStepLabel: (itemId, label) =>
+    set((state) => {
+      const current = state.activeAnalyses[itemId];
+      if (!current) return state;
+      return {
+        activeAnalyses: {
+          ...state.activeAnalyses,
+          [itemId]: { ...current, currentStepLabel: label },
+        },
+      };
+    }),
   endAnalysis: (itemId) =>
     set((state) => {
       const { [itemId]: _, ...rest } = state.activeAnalyses;
@@ -74,7 +88,14 @@ export const useAnalysisStore = create<AnalysisStoreState>((set) => ({
       return {
         activeAnalyses: {
           ...state.activeAnalyses,
-          [itemId]: { ...current, content: "", isStreaming: false, status: null },
+          [itemId]: {
+            ...current,
+            content: "",
+            isStreaming: false,
+            status: null,
+            currentStepIndex: current.currentStepIndex + 1,
+            currentStepLabel: null,
+          },
         },
       };
     }),

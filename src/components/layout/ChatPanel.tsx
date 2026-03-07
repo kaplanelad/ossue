@@ -33,6 +33,7 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
     isStreaming,
     isLoading,
     analysisStatus,
+    currentStepIndex,
     sendMessage,
     analyzeWithAction,
     clearMessages,
@@ -140,6 +141,7 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
         isStreaming={isStreaming}
         isLoading={isLoading}
         analysisStatus={analysisStatus}
+        currentStepIndex={currentStepIndex}
         onAnalyzeAction={analyzeWithAction}
         itemId={selectedItem.id}
         itemType={selectedItem.item_type}

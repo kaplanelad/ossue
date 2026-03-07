@@ -53,6 +53,11 @@ export function useAIStreaming() {
       listen<{ item_id: string; message: ChatMessage }>(
         "ai-step-user-message",
         (event) => {
+          // Track the current step label for the stepper UI
+          store().setCurrentStepLabel(
+            event.payload.item_id,
+            event.payload.message.content
+          );
           // Only add if the currently selected item matches
           if (store().selectedItemId === event.payload.item_id) {
             chatStore().addMessage(event.payload.message);

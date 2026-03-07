@@ -87,6 +87,7 @@ interface AppState {
   startAnalysis: (itemId: string) => void;
   setAnalysisStatus: (itemId: string, status: string) => void;
   appendAnalysisContent: (itemId: string, chunk: string) => void;
+  setCurrentStepLabel: (itemId: string, label: string) => void;
   endAnalysis: (itemId: string) => void;
   clearAnalysis: (itemId: string) => void;
   resetStreamingContent: (itemId: string) => void;
@@ -197,6 +198,7 @@ function getCompositeState(): AppState {
     startAnalysis: analysis.startAnalysis,
     setAnalysisStatus: analysis.setAnalysisStatus,
     appendAnalysisContent: analysis.appendAnalysisContent,
+    setCurrentStepLabel: analysis.setCurrentStepLabel,
     endAnalysis: analysis.endAnalysis,
     clearAnalysis: analysis.clearAnalysis,
     resetStreamingContent: analysis.resetStreamingContent,

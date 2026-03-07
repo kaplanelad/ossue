@@ -19,6 +19,8 @@ export function useChat(itemId: string | null) {
   const streamingContent = analysis?.content ?? "";
   const isStreaming = analysis?.isStreaming ?? false;
   const analysisStatus = analysis?.status ?? null;
+  const currentStepIndex = analysis?.currentStepIndex ?? 0;
+  const currentStepLabel = analysis?.currentStepLabel ?? null;
 
   // Load chat history when item changes
   useEffect(() => {
@@ -158,6 +160,8 @@ export function useChat(itemId: string | null) {
     isStreaming,
     isLoading,
     analysisStatus,
+    currentStepIndex,
+    currentStepLabel,
     sendMessage,
     analyzeItem,
     analyzeWithAction,
