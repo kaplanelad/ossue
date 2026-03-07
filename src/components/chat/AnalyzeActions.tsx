@@ -144,7 +144,7 @@ export function AnalyzeActions({
           rows={2}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               handleEditSubmit();
             }
@@ -189,7 +189,7 @@ export function AnalyzeActions({
           rows={2}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               handleResearchSubmit();
             }
