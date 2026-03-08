@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -14,6 +14,11 @@ import {
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/utils";
 import * as api from "@/lib/tauri";
+
+// Track which items have already been acted on across re-renders
+const postedItems = new Set<string>();
+const mergedItems = new Set<string>();
+const closedItems = new Set<string>();
 
 interface AnalyzeActionsProps {
   itemId: string;
@@ -37,9 +42,15 @@ export function AnalyzeActions({
   const [posting, setPosting] = useState(false);
   const [merging, setMerging] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [posted, setPosted] = useState(false);
-  const [merged, setMerged] = useState(false);
-  const [closed, setClosed] = useState(false);
+  const [posted, setPosted] = useState(() => postedItems.has(itemId));
+  const [merged, setMerged] = useState(() => mergedItems.has(itemId));
+  const [closed, setClosed] = useState(() => closedItems.has(itemId));
+
+  useEffect(() => {
+    setPosted(postedItems.has(itemId));
+    setMerged(mergedItems.has(itemId));
+    setClosed(closedItems.has(itemId));
+  }, [itemId]);
 
   const canMerge =
     itemType === "pr" && /CAN MERGE/i.test(lastMessageContent);
@@ -47,7 +58,9 @@ export function AnalyzeActions({
   const canClose =
     itemType === "issue" && /Can close/i.test(lastMessageContent);
 
-  // Extract the last ## section that looks like a suggested comment/response
+  // Extract the last ## section that looks like a suggested comment/response.
+  // Falls back to the entire content since lastMessageContent is already from
+  // the "draft suggested" analysis step.
   const extractSuggestedComment = (): string | null => {
     // Match any heading containing "suggest" or "response" or "comment" or "reply"
     const pattern = /^##\s+.*(?:suggest|response|comment|reply).*$/gim;
@@ -56,13 +69,17 @@ export function AnalyzeActions({
     while ((m = pattern.exec(lastMessageContent)) !== null) {
       lastMatch = m;
     }
-    if (!lastMatch || lastMatch.index === undefined) return null;
-    const start = lastMatch.index + lastMatch[0].length;
-    const rest = lastMessageContent.slice(start);
-    // Take everything until the next ## header or end
-    const nextHeader = rest.search(/\n##\s/);
-    const text = nextHeader !== -1 ? rest.slice(0, nextHeader) : rest;
-    return text.trim() || null;
+    if (lastMatch && lastMatch.index !== undefined) {
+      const start = lastMatch.index + lastMatch[0].length;
+      const rest = lastMessageContent.slice(start);
+      // Take everything until the next ## header or end
+      const nextHeader = rest.search(/\n##\s/);
+      const text = nextHeader !== -1 ? rest.slice(0, nextHeader) : rest;
+      if (text.trim()) return text.trim();
+    }
+    // No matching heading found — use the entire content as the suggested comment
+    // since lastMessageContent is already the output of the "draft suggested" step
+    return lastMessageContent.trim() || null;
   };
 
   const handlePost = async () => {
@@ -74,6 +91,7 @@ export function AnalyzeActions({
     setPosting(true);
     try {
       await api.postItemComment(itemId, comment);
+      postedItems.add(itemId);
       setPosted(true);
       toast.success("Comment posted");
     } catch (err) {
@@ -87,6 +105,7 @@ export function AnalyzeActions({
     setMerging(true);
     try {
       await api.mergePullRequest(itemId);
+      mergedItems.add(itemId);
       setMerged(true);
       toast.success("Pull request merged");
     } catch (err) {
@@ -100,6 +119,7 @@ export function AnalyzeActions({
     setClosing(true);
     try {
       await api.closeItem(itemId);
+      closedItems.add(itemId);
       setClosed(true);
       toast.success("Issue closed");
     } catch (err) {
@@ -269,6 +289,7 @@ export function AnalyzeActions({
       </Button>
       <Button
         size="sm"
+        variant={posted ? "outline" : "default"}
         onClick={handlePost}
         disabled={posting || posted || disabled}
         className={posted ? "border-green-500/40 bg-green-500/10 text-green-600" : ""}
