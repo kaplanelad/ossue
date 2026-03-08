@@ -96,10 +96,7 @@ pub async fn poll_for_token(client_id: &str, device_code: &str) -> Result<PollRe
         .form(&[
             ("client_id", client_id),
             ("device_code", device_code),
-            (
-                "grant_type",
-                "urn:ietf:params:oauth:grant-type:device_code",
-            ),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ])
         .send()
         .await?

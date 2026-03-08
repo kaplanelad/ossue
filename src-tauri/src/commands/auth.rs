@@ -255,9 +255,11 @@ pub async fn poll_github_oauth(
     state: State<'_, AppState>,
 ) -> Result<OAuthPollResponse, CommandError> {
     let device_state = state.oauth_device_state.lock().await;
-    let ds = device_state.as_ref().ok_or_else(|| CommandError::Internal {
-        message: "No OAuth flow in progress".to_string(),
-    })?;
+    let ds = device_state
+        .as_ref()
+        .ok_or_else(|| CommandError::Internal {
+            message: "No OAuth flow in progress".to_string(),
+        })?;
 
     if ds.expires_at < std::time::Instant::now() {
         return Ok(OAuthPollResponse {
@@ -314,9 +316,7 @@ pub async fn poll_github_oauth(
 }
 
 #[tauri::command]
-pub async fn cancel_github_oauth(
-    state: State<'_, AppState>,
-) -> Result<(), CommandError> {
+pub async fn cancel_github_oauth(state: State<'_, AppState>) -> Result<(), CommandError> {
     tracing::info!("Cancelling GitHub OAuth device flow");
     *state.oauth_device_state.lock().await = None;
     Ok(())
