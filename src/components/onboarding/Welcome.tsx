@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RepoPicker } from "./RepoPicker";
+import { GitHubOAuthFlow } from "@/components/shared/GitHubOAuthFlow";
 import { useAppStore } from "@/stores/appStore";
 import * as api from "@/lib/tauri";
 import type { Connector } from "@/types";
@@ -150,6 +151,24 @@ export function Welcome() {
         name: "GitHub",
         platform: "github",
         token: githubToken,
+      });
+      setConnectors((prev) => [...prev, connector]);
+      setStep("repos");
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSavingProvider(null);
+    }
+  };
+
+  const handleOAuthSuccess = async (token: string) => {
+    setSavingProvider("github");
+    setError(null);
+    try {
+      const connector = await api.addConnector({
+        name: "GitHub",
+        platform: "github",
+        token: token,
       });
       setConnectors((prev) => [...prev, connector]);
       setStep("repos");
@@ -650,7 +669,7 @@ export function Welcome() {
                                 style={{ color: "rgba(250,249,248,0.4)" }}
                               >
                                 {key === "github"
-                                  ? "Personal access token"
+                                  ? "OAuth or access token"
                                   : "Access token"}
                               </span>
                             </div>
@@ -663,6 +682,27 @@ export function Welcome() {
                     <div className="space-y-3" style={anim(250)}>
                       {connectProvider === "github" ? (
                         <>
+                          <GitHubOAuthFlow onSuccess={handleOAuthSuccess} />
+
+                          <div
+                            className="flex items-center gap-3 my-4"
+                          >
+                            <div
+                              className="flex-1 h-px"
+                              style={{ background: "rgba(250,249,248,0.1)" }}
+                            />
+                            <span
+                              className="text-xs font-medium uppercase tracking-wider"
+                              style={{ color: "rgba(250,249,248,0.35)" }}
+                            >
+                              or
+                            </span>
+                            <div
+                              className="flex-1 h-px"
+                              style={{ background: "rgba(250,249,248,0.1)" }}
+                            />
+                          </div>
+
                           <div className="space-y-2">
                             <Label
                               htmlFor="github-token"

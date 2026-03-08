@@ -205,6 +205,123 @@ pub async fn disconnect_gitlab(state: State<'_, AppState>) -> Result<(), Command
     Ok(())
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OAuthStartResponse {
+    pub user_code: String,
+    pub verification_uri: String,
+    pub interval: u64,
+    pub expires_in: u64,
+}
+
+#[tauri::command]
+pub async fn start_github_oauth(
+    state: State<'_, AppState>,
+) -> Result<OAuthStartResponse, CommandError> {
+    tracing::info!("Starting GitHub OAuth device flow");
+    let client_id = ossue_core::services::oauth::GITHUB_CLIENT_ID;
+    let resp = ossue_core::services::oauth::request_device_code(client_id, "repo")
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to request device code");
+            CommandError::PlatformApi {
+                message: e.to_string(),
+            }
+        })?;
+
+    let device_state = crate::OAuthDeviceState {
+        device_code: resp.device_code,
+        interval: resp.interval,
+        client_id: client_id.to_string(),
+        expires_at: std::time::Instant::now() + std::time::Duration::from_secs(resp.expires_in),
+    };
+    *state.oauth_device_state.lock().await = Some(device_state);
+
+    Ok(OAuthStartResponse {
+        user_code: resp.user_code,
+        verification_uri: resp.verification_uri,
+        interval: resp.interval,
+        expires_in: resp.expires_in,
+    })
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OAuthPollResponse {
+    pub status: String,
+    pub access_token: Option<String>,
+}
+
+#[tauri::command]
+pub async fn poll_github_oauth(
+    state: State<'_, AppState>,
+) -> Result<OAuthPollResponse, CommandError> {
+    let device_state = state.oauth_device_state.lock().await;
+    let ds = device_state.as_ref().ok_or_else(|| CommandError::Internal {
+        message: "No OAuth flow in progress".to_string(),
+    })?;
+
+    if ds.expires_at < std::time::Instant::now() {
+        return Ok(OAuthPollResponse {
+            status: "expired".to_string(),
+            access_token: None,
+        });
+    }
+
+    let result = ossue_core::services::oauth::poll_for_token(&ds.client_id, &ds.device_code)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to poll for OAuth token");
+            CommandError::PlatformApi {
+                message: e.to_string(),
+            }
+        })?;
+    drop(device_state);
+
+    match result {
+        ossue_core::services::oauth::PollResult::Pending => Ok(OAuthPollResponse {
+            status: "pending".to_string(),
+            access_token: None,
+        }),
+        ossue_core::services::oauth::PollResult::Success { access_token, .. } => {
+            *state.oauth_device_state.lock().await = None;
+            Ok(OAuthPollResponse {
+                status: "success".to_string(),
+                access_token: Some(access_token),
+            })
+        }
+        ossue_core::services::oauth::PollResult::SlowDown => Ok(OAuthPollResponse {
+            status: "slow_down".to_string(),
+            access_token: None,
+        }),
+        ossue_core::services::oauth::PollResult::Expired => {
+            *state.oauth_device_state.lock().await = None;
+            Ok(OAuthPollResponse {
+                status: "expired".to_string(),
+                access_token: None,
+            })
+        }
+        ossue_core::services::oauth::PollResult::Denied => {
+            *state.oauth_device_state.lock().await = None;
+            Ok(OAuthPollResponse {
+                status: "denied".to_string(),
+                access_token: None,
+            })
+        }
+        ossue_core::services::oauth::PollResult::Error { message: _ } => Ok(OAuthPollResponse {
+            status: "error".to_string(),
+            access_token: None,
+        }),
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_github_oauth(
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    tracing::info!("Cancelling GitHub OAuth device flow");
+    *state.oauth_device_state.lock().await = None;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn list_github_repos(
     state: State<'_, AppState>,

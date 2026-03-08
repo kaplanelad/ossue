@@ -36,6 +36,8 @@ import { SettingHeader } from "./SettingHeader";
 import { AddProjectsDialog } from "./AddProjectsDialog";
 import { AIProviderSelector } from "./AIProviderSelector";
 import { AIPreferencesForm } from "./AIPreferencesForm";
+import { GitHubOAuthFlow } from "@/components/shared/GitHubOAuthFlow";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Tooltip,
   TooltipTrigger,
@@ -228,6 +230,27 @@ export function SettingsPage() {
       toast.error("Failed to save setting", { description: errorMessage(err) });
     } finally {
       setSaving(null);
+    }
+  };
+
+  const handleOAuthConnectorSuccess = async (token: string) => {
+    if (!newConnName.trim()) return;
+    setAddingConn(true);
+    try {
+      await api.addConnector({
+        name: newConnName,
+        platform: "github",
+        token: token,
+      });
+      setAddDialogOpen(false);
+      setNewConnName("");
+      setNewConnToken("");
+      setNewConnBaseUrl("");
+      await loadConnectors();
+    } catch (err) {
+      toast.error("Failed to add connection", { description: errorMessage(err) });
+    } finally {
+      setAddingConn(false);
     }
   };
 
@@ -556,6 +579,22 @@ export function SettingsPage() {
                               </SelectContent>
                             </Select>
                           </div>
+                          {newConnPlatform === "github" && (
+                            <>
+                              <GitHubOAuthFlow
+                                compact
+                                onSuccess={handleOAuthConnectorSuccess}
+                              />
+                              <div className="relative my-3">
+                                <div className="absolute inset-0 flex items-center">
+                                  <span className="w-full border-t" />
+                                </div>
+                                <div className="relative flex justify-center text-xs">
+                                  <span className="bg-background px-2 text-muted-foreground">or</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
                           <div className="space-y-2">
                             <Label>Token</Label>
                             <Input
@@ -652,14 +691,35 @@ export function SettingsPage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveConnector(conn.id)}
-                        aria-label="Remove connector"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {conn.platform === "github" && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() =>
+                                  openUrl(
+                                    "https://github.com/settings/connections/applications/Ov23liM7NzVENXwaf7Dw"
+                                  )
+                                }
+                                aria-label="Manage organization access"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Manage organization access</TooltipContent>
+                          </Tooltip>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveConnector(conn.id)}
+                          aria-label="Remove connector"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
 
