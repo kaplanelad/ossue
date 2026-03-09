@@ -74,8 +74,7 @@ pub async fn request_device_code(client_id: &str, scope: &str) -> Result<DeviceC
         .form(&[("client_id", client_id), ("scope", scope)])
         .send()
         .await?
-        .error_for_status()
-        .map_err(reqwest::Error::from)?;
+        .error_for_status()?;
 
     let body = resp.text().await?;
     let device_code: DeviceCodeResponse = serde_json::from_str(&body)?;
@@ -100,8 +99,7 @@ pub async fn poll_for_token(client_id: &str, device_code: &str) -> Result<PollRe
         ])
         .send()
         .await?
-        .error_for_status()
-        .map_err(reqwest::Error::from)?;
+        .error_for_status()?;
 
     let body = resp.text().await?;
     let value: serde_json::Value = serde_json::from_str(&body)?;
