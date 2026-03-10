@@ -61,7 +61,7 @@ export function KeyboardShortcutsDialog({ open, onOpenChange }: KeyboardShortcut
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 px-5 py-4">
+        <div className="max-h-[60vh] space-y-5 overflow-y-auto px-5 py-4">
           <Section title="Navigation">
             <ShortcutRow
               keys={<><Kbd>j</Kbd><Sep>/</Sep><Kbd>↓</Kbd></>}
