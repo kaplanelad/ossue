@@ -97,7 +97,7 @@ export function NotePanel({ width }: NotePanelProps) {
   return (
     <div className="flex h-full shrink-0 flex-col overflow-hidden" style={{ width }}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="min-w-0 flex-1 flex items-center gap-2">
           <StickyNote className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" />
           <h3 className="truncate text-sm font-semibold">

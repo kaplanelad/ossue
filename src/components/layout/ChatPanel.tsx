@@ -47,7 +47,7 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
       style={isFullscreen ? undefined : { width }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-semibold">{selectedItem.title}</h3>
           <p className="truncate text-xs text-muted-foreground">

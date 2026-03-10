@@ -203,10 +203,13 @@ function App() {
                     {/* Resize handle */}
                     {!isChatFullscreen && (
                       <div
-                        className="flex w-1.5 shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-primary/10 active:bg-primary/20"
+                        className="flex w-1.5 shrink-0 cursor-col-resize flex-col transition-colors hover:bg-primary/10 active:bg-primary/20"
                         onMouseDown={handleMouseDown}
                       >
-                        <div className="h-8 w-0.5 rounded-full bg-border" />
+                        <div className="h-14 shrink-0 border-b" />
+                        <div className="flex flex-1 items-center justify-center">
+                          <div className="h-8 w-0.5 rounded-full bg-border" />
+                        </div>
                       </div>
                     )}
                     {showChatPanel && (
