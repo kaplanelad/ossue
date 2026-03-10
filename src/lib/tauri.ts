@@ -38,6 +38,14 @@ export const listGithubRepos = (connectorId?: string) =>
 export const listGitlabProjects = (connectorId?: string) =>
   invoke<GitLabProject[]>("list_gitlab_projects", { connectorId });
 
+// OAuth commands
+export const startGithubOAuth = () =>
+  invoke<{ user_code: string; verification_uri: string; interval: number; expires_in: number }>("start_github_oauth");
+export const pollGithubOAuth = () =>
+  invoke<{ status: "pending" | "success" | "expired" | "denied" | "slow_down" | "error"; access_token: string | null }>("poll_github_oauth");
+export const cancelGithubOAuth = () =>
+  invoke<void>("cancel_github_oauth");
+
 // Connector commands
 export const listConnectors = () =>
   invoke<Connector[]>("list_connectors");

@@ -15,6 +15,13 @@ use sea_orm::DatabaseConnection;
 
 mod commands;
 
+pub struct OAuthDeviceState {
+    pub device_code: String,
+    pub interval: u64,
+    pub client_id: String,
+    pub expires_at: std::time::Instant,
+}
+
 pub struct AppState {
     pub db: Arc<tokio::sync::RwLock<Option<DatabaseConnection>>>,
     pub log_reload_handle: LogReloadHandle,
@@ -23,6 +30,7 @@ pub struct AppState {
     pub retry_handles: Arc<Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>>,
     pub repo_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     pub repo_manager: Arc<ossue_core::services::repo_manager::RepoManager>,
+    pub oauth_device_state: Arc<Mutex<Option<OAuthDeviceState>>>,
 }
 
 impl AppState {
@@ -69,6 +77,7 @@ pub fn run() {
             retry_handles: Arc::new(Mutex::new(HashMap::new())),
             repo_locks: Arc::new(Mutex::new(HashMap::new())),
             repo_manager: Arc::new(ossue_core::services::repo_manager::RepoManager::new()),
+            oauth_device_state: Arc::new(Mutex::new(None)),
         })
         .setup(|app| {
             // System tray icon
@@ -125,6 +134,9 @@ pub fn run() {
             commands::auth::save_gitlab_token,
             commands::auth::disconnect_github,
             commands::auth::disconnect_gitlab,
+            commands::auth::start_github_oauth,
+            commands::auth::poll_github_oauth,
+            commands::auth::cancel_github_oauth,
             commands::auth::list_github_repos,
             commands::auth::list_gitlab_projects,
             // Connectors
