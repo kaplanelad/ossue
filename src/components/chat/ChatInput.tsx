@@ -14,6 +14,7 @@ import {
   Sparkles,
   MessageSquare,
   Trash2,
+  TextCursorInput,
 } from "lucide-react";
 import type { AnalysisAction } from "@/types";
 
@@ -21,6 +22,7 @@ interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   onAnalyzeAction: (action: AnalysisAction) => void;
+  onRequestAnalyze: (action: AnalysisAction) => void;
   onClearChat: () => void;
   hasMessages: boolean;
 }
@@ -29,6 +31,7 @@ export function ChatInput({
   onSend,
   disabled,
   onAnalyzeAction,
+  onRequestAnalyze,
   onClearChat,
   hasMessages,
 }: ChatInputProps) {
@@ -50,16 +53,15 @@ export function ChatInput({
   };
 
   return (
-    <div className="shrink-0 border-t p-4">
-      <div className="flex min-w-0 gap-2">
+    <div className="shrink-0 border-t">
+      <div className="flex min-w-0 gap-2 p-4">
         <Textarea
           ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Ask a follow-up question..."
-          className="min-h-[40px] min-w-0 max-h-[120px] flex-1 resize-none"
-          rows={1}
+          className="min-w-0 flex-1 resize-none"
           disabled={disabled}
         />
         <Button
@@ -81,9 +83,18 @@ export function ChatInput({
               <Sparkles className="h-4 w-4" />
               Analyze
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRequestAnalyze("analyze")}>
+              <TextCursorInput className="h-4 w-4" />
+              Analyze with context...
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onAnalyzeAction("draft_response")}>
               <MessageSquare className="h-4 w-4" />
               Draft Response
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRequestAnalyze("draft_response")}>
+              <TextCursorInput className="h-4 w-4" />
+              Draft Response with context...
             </DropdownMenuItem>
             {hasMessages && (
               <>

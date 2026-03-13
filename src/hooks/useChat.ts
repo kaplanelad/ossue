@@ -101,14 +101,14 @@ export function useChat(itemId: string | null) {
   }, [itemId, startAnalysis, clearAnalysis]);
 
   const analyzeWithAction = useCallback(
-    async (action: AnalysisAction) => {
+    async (action: AnalysisAction, additionalContext?: string) => {
       if (!itemId) return;
 
       useChatStore.getState().setIsLoading(itemId, true);
       startAnalysis(itemId);
       try {
         // Messages arrive incrementally via events during the command execution
-        await api.analyzeItemAction({ item_id: itemId, action });
+        await api.analyzeItemAction({ item_id: itemId, action, additional_context: additionalContext });
         // Reload from DB for consistency (catches any missed events)
         const msgs = await api.getChatMessages(itemId);
         useChatStore.getState().setMessages(itemId, msgs);

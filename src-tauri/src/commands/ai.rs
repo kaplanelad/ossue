@@ -248,6 +248,7 @@ pub struct ChatMessageResponse {
 pub struct AnalyzeActionRequest {
     pub item_id: String,
     pub action: String, // "analyze", "draft_response"
+    pub additional_context: Option<String>,
 }
 
 #[tauri::command]
@@ -1031,6 +1032,7 @@ pub async fn analyze_item_action(
     item_context.custom_instructions = ctx.custom_instructions;
     item_context.review_strictness = ctx.review_strictness;
     item_context.response_tone = ctx.response_tone;
+    item_context.additional_context = request.additional_context.clone();
 
     // Build prompt and compute hash for analysis history
     let _ = app.emit(

@@ -29,6 +29,7 @@ pub struct ItemContext {
     pub review_strictness: Option<String>,
     pub response_tone: Option<String>,
     pub pr_diff: Option<String>,
+    pub additional_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +275,7 @@ impl ContextService {
             review_strictness: None,
             response_tone: None,
             pr_diff,
+            additional_context: None,
         }
     }
 
@@ -423,6 +425,7 @@ impl ContextService {
             review_strictness: None,
             response_tone: None,
             pr_diff,
+            additional_context: None,
         }
     }
 
@@ -706,7 +709,14 @@ impl ContextService {
             ));
         }
 
-        // 6. CONTRIBUTING.md excerpt (only for DraftResponse — not useful for Analyze)
+        // 6. Additional context (user-provided text from the chat input)
+        if let Some(ref additional) = context.additional_context {
+            if !additional.is_empty() {
+                sections.push(format!("## Additional Context\n{}", additional));
+            }
+        }
+
+        // 7. CONTRIBUTING.md excerpt (only for DraftResponse — not useful for Analyze)
         if *action == ActionType::DraftResponse {
             if let Some(ref pf) = context.project_files {
                 if let Some(ref contributing) = pf.contributing {
@@ -907,6 +917,7 @@ mod tests {
             review_strictness: Some("high".to_string()),
             response_tone: Some("professional".to_string()),
             pr_diff: None,
+            additional_context: None,
         }
     }
 
@@ -928,6 +939,7 @@ mod tests {
             review_strictness: None,
             response_tone: None,
             pr_diff: None,
+            additional_context: None,
         }
     }
 
