@@ -14,6 +14,7 @@ export type AnalysisAction = "analyze" | "draft_response";
 export interface AnalyzeActionRequest {
   item_id: string;
   action: AnalysisAction;
+  additional_context?: string;
 }
 
 export interface AiSettings {

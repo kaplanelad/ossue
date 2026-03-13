@@ -2,11 +2,12 @@ import { useAppStore } from "@/stores/appStore";
 import { useChat } from "@/hooks/useChat";
 import { MessageList } from "@/components/chat/MessageList";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { useState, useMemo } from "react";
+import { AnalyzeDialog } from "@/components/chat/AnalyzeDialog";
+import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Trash2, X, Copy, Check, CircleDot, GitPullRequest, Link2, Maximize2, Minimize2 } from "lucide-react";
 import { findLinkedItems } from "@/lib/linkedItems";
-import type { Item } from "@/types";
+import type { Item, AnalysisAction } from "@/types";
 
 interface ChatPanelProps {
   width?: number;
@@ -38,6 +39,18 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
     analyzeWithAction,
     clearMessages,
   } = useChat(selectedItemId);
+
+  const [analyzeDialogOpen, setAnalyzeDialogOpen] = useState(false);
+  const [analyzeDialogAction, setAnalyzeDialogAction] = useState<AnalysisAction>("analyze");
+
+  const handleRequestAnalyze = useCallback((action: AnalysisAction) => {
+    setAnalyzeDialogAction(action);
+    setAnalyzeDialogOpen(true);
+  }, []);
+
+  const handleConfirmAnalyze = useCallback((additionalContext?: string) => {
+    analyzeWithAction(analyzeDialogAction, additionalContext);
+  }, [analyzeDialogAction, analyzeWithAction]);
 
   if (!selectedItem) return null;
 
@@ -142,7 +155,8 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
         isLoading={isLoading}
         analysisStatus={analysisStatus}
         currentStepIndex={currentStepIndex}
-        onAnalyzeAction={analyzeWithAction}
+        onAnalyze={() => analyzeWithAction("analyze")}
+        onAnalyzeWithContext={() => handleRequestAnalyze("analyze")}
         itemId={selectedItem.id}
         itemType={selectedItem.item_type}
         onSendFollowUp={sendMessage}
@@ -152,9 +166,18 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
       <ChatInput
         onSend={sendMessage}
         disabled={isLoading || isStreaming}
-        onAnalyzeAction={analyzeWithAction}
+        onAnalyzeAction={(action) => analyzeWithAction(action)}
+        onRequestAnalyze={handleRequestAnalyze}
         onClearChat={clearMessages}
         hasMessages={messages.length > 0}
+      />
+
+      {/* Analyze confirmation dialog */}
+      <AnalyzeDialog
+        open={analyzeDialogOpen}
+        onOpenChange={setAnalyzeDialogOpen}
+        action={analyzeDialogAction}
+        onConfirm={handleConfirmAnalyze}
       />
     </div>
   );

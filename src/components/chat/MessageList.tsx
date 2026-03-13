@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatMessage, AnalysisAction } from "@/types";
+import type { ChatMessage } from "@/types";
 import { AIMessage } from "./AIMessage";
 import { UserMessage } from "./UserMessage";
 import { AnalysisReport } from "./AnalysisReport";
@@ -15,7 +15,8 @@ interface MessageListProps {
   isLoading: boolean;
   analysisStatus: string | null;
   currentStepIndex: number;
-  onAnalyzeAction: (action: AnalysisAction) => void;
+  onAnalyze: () => void;
+  onAnalyzeWithContext: () => void;
   itemId: string;
   itemType: "issue" | "pr" | "discussion" | "note";
   onSendFollowUp: (message: string) => void;
@@ -28,7 +29,8 @@ export function MessageList({
   isLoading,
   analysisStatus,
   currentStepIndex,
-  onAnalyzeAction,
+  onAnalyze,
+  onAnalyzeWithContext,
   itemId,
   itemType,
   onSendFollowUp,
@@ -58,10 +60,16 @@ export function MessageList({
       <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
         <img src="/app-icon.png" alt="" className="h-10 w-10 opacity-40" />
         <p className="text-sm">Get a full briefing on this item</p>
-        <Button variant="outline" size="sm" onClick={() => onAnalyzeAction("analyze")}>
+        <Button variant="outline" size="sm" onClick={onAnalyze}>
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
           Analyze
         </Button>
+        <button
+          className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-2"
+          onClick={onAnalyzeWithContext}
+        >
+          or add context first
+        </button>
       </div>
     );
   }
