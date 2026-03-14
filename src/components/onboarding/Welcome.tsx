@@ -518,7 +518,13 @@ export function Welcome() {
                         }}
                       />
                     )}
-                    <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5"
+                      style={{ cursor: isCompleted ? "pointer" : "default" }}
+                      disabled={!isCompleted}
+                      onClick={() => isCompleted && setStep(s.key)}
+                    >
                       <div
                         className="rounded-full transition-all duration-500"
                         style={{
@@ -545,7 +551,7 @@ export function Welcome() {
                       >
                         {s.label}
                       </span>
-                    </div>
+                    </button>
                   </Fragment>
                 );
               })}
