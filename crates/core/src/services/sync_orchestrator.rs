@@ -523,8 +523,7 @@ pub async fn sync_platform_items(
             }
 
             if !items.is_empty() {
-                let saved =
-                    sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
                 total_synced += saved.len();
                 progress.emit_items(saved);
             }
@@ -563,8 +562,7 @@ pub async fn sync_platform_items(
             }
 
             if !items.is_empty() {
-                let saved =
-                    sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
                 total_synced += saved.len();
                 progress.emit_items(saved);
             }
@@ -609,8 +607,7 @@ pub async fn sync_platform_items(
             }
 
             if !items.is_empty() {
-                let saved =
-                    sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
                 total_synced += saved.len();
                 progress.emit_items(saved);
             }
@@ -629,13 +626,8 @@ pub async fn sync_platform_items(
     // === Full Reconciliation: mark absent items as closed ===
     if is_full_reconciliation {
         if config.sync_issues {
-            sync::mark_absent_items_closed(
-                db,
-                &proj.id,
-                &all_fetched_issue_ids,
-                &ItemType::Issue,
-            )
-            .await?;
+            sync::mark_absent_items_closed(db, &proj.id, &all_fetched_issue_ids, &ItemType::Issue)
+                .await?;
         }
 
         if config.sync_prs {
@@ -712,7 +704,15 @@ pub async fn sync_github_items(
 
     let mut platform = GitHubPlatformSync::new(client, &proj.owner, &proj.name);
     platform.init(db, proj).await?;
-    sync_platform_items(db, proj, &platform, progress, is_full_reconciliation, config).await
+    sync_platform_items(
+        db,
+        proj,
+        &platform,
+        progress,
+        is_full_reconciliation,
+        config,
+    )
+    .await
 }
 
 pub async fn sync_gitlab_items(
@@ -727,7 +727,15 @@ pub async fn sync_gitlab_items(
     let client = GitLabClient::new(token.to_string(), base_url);
     let mut platform = GitLabPlatformSync::new(client, &proj.owner, &proj.name);
     platform.init(db, proj).await?;
-    sync_platform_items(db, proj, &platform, progress, is_full_reconciliation, config).await
+    sync_platform_items(
+        db,
+        proj,
+        &platform,
+        progress,
+        is_full_reconciliation,
+        config,
+    )
+    .await
 }
 
 #[cfg(test)]

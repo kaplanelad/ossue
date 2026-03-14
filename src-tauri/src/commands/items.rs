@@ -745,10 +745,8 @@ pub(crate) async fn do_sync_for_project(
 
     let legacy_date = get_setting("sync_from_date");
     let config = SyncConfig {
-        sync_from_date_issues: get_setting("sync_from_date_issues")
-            .or_else(|| legacy_date.clone()),
-        sync_from_date_prs: get_setting("sync_from_date_prs")
-            .or_else(|| legacy_date.clone()),
+        sync_from_date_issues: get_setting("sync_from_date_issues").or_else(|| legacy_date.clone()),
+        sync_from_date_prs: get_setting("sync_from_date_prs").or_else(|| legacy_date.clone()),
         sync_from_date_discussions: get_setting("sync_from_date_discussions")
             .or_else(|| legacy_date.clone()),
         sync_issues: get_setting("sync_issues_enabled")
