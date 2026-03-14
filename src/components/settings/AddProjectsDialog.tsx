@@ -15,8 +15,9 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
 import type { Connector, Project } from "@/types";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, ChevronRight } from "lucide-react";
 import { RepoBrowser, type RepoWithConnector } from "@/components/shared/RepoBrowser";
+import { SyncFilters } from "@/components/shared/SyncFilters";
 
 interface AddProjectsDialogProps {
   open: boolean;
@@ -38,6 +39,12 @@ export function AddProjectsDialog({
   const [urlInput, setUrlInput] = useState("");
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingSelected, setAddingSelected] = useState(false);
+  const [addedProjects, setAddedProjects] = useState<
+    { id: string; name: string; owner: string; platform: "github" | "gitlab" }[]
+  >([]);
+  const [expandedAdvanced, setExpandedAdvanced] = useState<Set<string>>(
+    new Set()
+  );
 
   // Reset all state when dialog closes
   useEffect(() => {
@@ -45,6 +52,8 @@ export function AddProjectsDialog({
       setSelectedRepos(new Set());
       setLoadedRepos([]);
       setUrlInput("");
+      setAddedProjects([]);
+      setExpandedAdvanced(new Set());
     }
   }, [open]);
 
@@ -56,7 +65,7 @@ export function AddProjectsDialog({
     if (selectedRepos.size === 0) return;
     setAddingSelected(true);
     try {
-      const newIds: string[] = [];
+      const added: typeof addedProjects = [];
       for (const repoUrl of selectedRepos) {
         const repo = loadedRepos.find((r) => r.url === repoUrl);
         if (!repo) continue;
@@ -67,10 +76,14 @@ export function AddProjectsDialog({
           url: repo.url,
           connector_id: repo.connectorId,
         });
-        newIds.push(project.id);
+        added.push({
+          id: project.id,
+          name: project.name,
+          owner: project.owner,
+          platform: project.platform,
+        });
       }
-      onProjectsAdded(newIds);
-      onOpenChange(false);
+      setAddedProjects(added);
     } catch (err) {
       toast.error("Failed to add projects", { description: errorMessage(err) });
     } finally {
@@ -89,7 +102,14 @@ export function AddProjectsDialog({
         connectorId = connectors.find((c) => c.platform === "gitlab")?.id;
       }
       const project = await api.addProjectByUrl(urlInput, connectorId);
-      onProjectsAdded([project.id]);
+      setAddedProjects([
+        {
+          id: project.id,
+          name: project.name,
+          owner: project.owner,
+          platform: project.platform,
+        },
+      ]);
       setUrlInput("");
     } catch (err) {
       toast.error("Failed to add project", { description: errorMessage(err) });
@@ -108,70 +128,125 @@ export function AddProjectsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
-          {connectors.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">
-              No connected accounts. Add one in the Accounts tab to browse
-              repositories.
-            </p>
-          ) : (
-            <RepoBrowser
-              connectors={connectors}
-              trackedProjects={trackedProjects}
-              selectedRepos={selectedRepos}
-              onSelectionChange={setSelectedRepos}
-              onReposLoaded={handleReposLoaded}
-              showAccountSelector
-            />
-          )}
-
-          <Separator />
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Or add by URL</p>
-            <div className="flex gap-2">
-              <Input
-                className="min-w-0"
-                placeholder="https://github.com/owner/repo"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddByUrl();
-                }}
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                className="shrink-0"
-                onClick={handleAddByUrl}
-                disabled={!urlInput.trim() || addingUrl}
-                aria-label="Add project"
-              >
-                {addingUrl ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-              </Button>
+        {addedProjects.length > 0 ? (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-2">
+              {addedProjects.map((project) => (
+                <div
+                  key={project.id}
+                  className="rounded-md border px-3 py-2 space-y-2"
+                >
+                  <span className="text-sm font-medium">
+                    {project.owner}/{project.name}
+                  </span>
+                  <div>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setExpandedAdvanced((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(project.id)) {
+                            next.delete(project.id);
+                          } else {
+                            next.add(project.id);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <span>Advanced Settings</span>
+                      <ChevronRight className={`h-3 w-3 transition-transform ${expandedAdvanced.has(project.id) ? "rotate-90" : ""}`} />
+                    </button>
+                    {expandedAdvanced.has(project.id) && (
+                      <div className="mt-2">
+                        <SyncFilters projectId={project.id} platform={project.platform} compact />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        </div>
 
-        <DialogFooter>
-          <div className="flex w-full items-center justify-between">
-            <Badge variant="secondary">
-              {selectedRepos.size} selected
-            </Badge>
-            <Button
-              onClick={handleAddSelected}
-              disabled={selectedRepos.size === 0 || addingSelected}
-            >
-              {addingSelected && (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  onProjectsAdded(addedProjects.map((p) => p.id));
+                  onOpenChange(false);
+                }}
+              >
+                Done
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
+              {connectors.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No connected accounts. Add one in the Accounts tab to browse
+                  repositories.
+                </p>
+              ) : (
+                <RepoBrowser
+                  connectors={connectors}
+                  trackedProjects={trackedProjects}
+                  selectedRepos={selectedRepos}
+                  onSelectionChange={setSelectedRepos}
+                  onReposLoaded={handleReposLoaded}
+                  showAccountSelector
+                />
               )}
-              Add Selected
-            </Button>
-          </div>
-        </DialogFooter>
+
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Or add by URL</p>
+                <div className="flex gap-2">
+                  <Input
+                    className="min-w-0"
+                    placeholder="https://github.com/owner/repo"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddByUrl();
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={handleAddByUrl}
+                    disabled={!urlInput.trim() || addingUrl}
+                    aria-label="Add project"
+                  >
+                    {addingUrl ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <div className="flex w-full items-center justify-between">
+                <Badge variant="secondary">
+                  {selectedRepos.size} selected
+                </Badge>
+                <Button
+                  onClick={handleAddSelected}
+                  disabled={selectedRepos.size === 0 || addingSelected}
+                >
+                  {addingSelected && (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  )}
+                  Add Selected
+                </Button>
+              </div>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

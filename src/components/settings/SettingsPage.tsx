@@ -36,6 +36,7 @@ import { SettingHeader } from "./SettingHeader";
 import { AddProjectsDialog } from "./AddProjectsDialog";
 import { AIProviderSelector } from "./AIProviderSelector";
 import { AIPreferencesForm } from "./AIPreferencesForm";
+import { SyncFilters } from "@/components/shared/SyncFilters";
 import { GitHubOAuthFlow } from "@/components/shared/GitHubOAuthFlow";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -125,6 +126,7 @@ export function SettingsPage() {
   // Per-project AI preferences
   const [projectAiSettings, setProjectAiSettings] = useState<Record<string, ProjectSettingEntry[]>>({});
   const [expandedProjectAi, setExpandedProjectAi] = useState<Set<string>>(new Set());
+  const [expandedSyncFilters, setExpandedSyncFilters] = useState<Set<string>>(new Set());
 
   const loadConnectors = useCallback(async () => {
     try {
@@ -181,6 +183,15 @@ export function SettingsPage() {
     } catch (err) {
       toast.error("Failed to delete project setting", { description: errorMessage(err) });
     }
+  };
+
+  const toggleSyncFilters = (id: string) => {
+    setExpandedSyncFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const toggleProjectAi = (projectId: string) => {
@@ -1026,6 +1037,21 @@ export function SettingsPage() {
                                   handleProjectAiSave(project.id, "ai_response_tone", v);
                                 }}
                               />
+                            </div>
+                          )}
+                        </div>
+                        {/* Sync Filters */}
+                        <div className="mt-2 border-t pt-2">
+                          <button
+                            className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground"
+                            onClick={() => toggleSyncFilters(project.id)}
+                          >
+                            <span>Sync Filters</span>
+                            <ChevronRight className={`h-3 w-3 transition-transform ${expandedSyncFilters.has(project.id) ? "rotate-90" : ""}`} />
+                          </button>
+                          {expandedSyncFilters.has(project.id) && (
+                            <div className="mt-2">
+                              <SyncFilters projectId={project.id} platform={project.platform as "github" | "gitlab"} />
                             </div>
                           )}
                         </div>

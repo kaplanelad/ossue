@@ -10,6 +10,8 @@ use crate::AppState;
 use ossue_core::enums::{ItemStatus, Platform};
 use ossue_core::models::item;
 use ossue_core::models::project;
+use ossue_core::models::project_settings;
+use ossue_core::services::sync_orchestrator::SyncConfig;
 
 use super::repos::{get_project_base_url, get_project_token};
 
@@ -728,6 +730,38 @@ pub(crate) async fn do_sync_for_project(
         }
     })?;
 
+    let sync_settings = project_settings::Entity::find()
+        .filter(project_settings::Column::ProjectId.eq(&proj.id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+
+    let get_setting = |key: &str| -> Option<String> {
+        sync_settings
+            .iter()
+            .find(|s| s.key == key)
+            .map(|s| s.value.clone())
+    };
+
+    let legacy_date = get_setting("sync_from_date");
+    let config = SyncConfig {
+        sync_from_date_issues: get_setting("sync_from_date_issues")
+            .or_else(|| legacy_date.clone()),
+        sync_from_date_prs: get_setting("sync_from_date_prs")
+            .or_else(|| legacy_date.clone()),
+        sync_from_date_discussions: get_setting("sync_from_date_discussions")
+            .or_else(|| legacy_date.clone()),
+        sync_issues: get_setting("sync_issues_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(true),
+        sync_prs: get_setting("sync_prs_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(true),
+        sync_discussions: get_setting("sync_discussions_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(true),
+    };
+
     let progress = TauriProgressSink {
         app_handle: app_handle.clone(),
         project_id: proj.id.clone(),
@@ -740,6 +774,7 @@ pub(crate) async fn do_sync_for_project(
             &token,
             &progress,
             is_full_reconciliation,
+            &config,
         )
         .await
         .map_err(|e| CommandError::Internal {
@@ -754,6 +789,7 @@ pub(crate) async fn do_sync_for_project(
                 base_url,
                 &progress,
                 is_full_reconciliation,
+                &config,
             )
             .await
             .map_err(|e| CommandError::Internal {
