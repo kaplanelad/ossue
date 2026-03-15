@@ -2,6 +2,7 @@
 set -euo pipefail
 
 APP_NAME="Ossue"
+BUNDLE_ID="com.eladkaplan.ossue"
 REPO="kaplanelad/ossue"
 
 echo "Installing ${APP_NAME}..."
@@ -52,6 +53,25 @@ if [ -z "$MOUNT_POINT" ]; then
   echo "Error: Failed to mount DMG."
   rm -rf "$TMPDIR_PATH"
   exit 1
+fi
+
+# If the app is running, quit it gracefully before replacing
+if osascript -e "application id \"${BUNDLE_ID}\" is running" 2>/dev/null | grep -q "true"; then
+  echo "${APP_NAME} is currently running. Quitting..."
+  osascript -e "tell application id \"${BUNDLE_ID}\" to quit" 2>/dev/null || true
+  # Wait up to 5 seconds for graceful shutdown
+  for i in $(seq 1 10); do
+    if ! osascript -e "application id \"${BUNDLE_ID}\" is running" 2>/dev/null | grep -q "true"; then
+      break
+    fi
+    sleep 0.5
+  done
+  # Force kill if still running
+  if osascript -e "application id \"${BUNDLE_ID}\" is running" 2>/dev/null | grep -q "true"; then
+    echo "Force closing ${APP_NAME}..."
+    pkill -f "${APP_NAME}.app/Contents/MacOS/" 2>/dev/null || true
+    sleep 1
+  fi
 fi
 
 # Copy to Applications (remove old version if exists)
