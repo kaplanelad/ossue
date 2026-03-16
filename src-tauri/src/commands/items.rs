@@ -504,7 +504,7 @@ pub enum SyncMode {
     Full,
 }
 
-async fn start_sync(
+pub(crate) async fn start_sync(
     state: &AppState,
     project_id: String,
     app_handle: tauri::AppHandle,

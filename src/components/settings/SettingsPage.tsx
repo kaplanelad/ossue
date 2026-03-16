@@ -28,7 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useAppStore } from "@/stores/appStore";
+import { useAppStore, useNavigationStore } from "@/stores/appStore";
 import { useProjects } from "@/hooks/useProjects";
 import * as api from "@/lib/tauri";
 import type { AppSettings, AppPaths, Connector, BackupInfo, LogEntriesResponse, ProjectNote, AiSettings, ProjectSettingEntry } from "@/types";
@@ -87,6 +87,14 @@ function formatBytes(bytes: number): string {
 
 export function SettingsPage() {
   const { items, setItems, setSelectedItemId, clearProjectSelection, setCurrentPage } = useAppStore();
+  const settingsTab = useNavigationStore((s) => s.settingsTab);
+  const [activeTab, setActiveTab] = useState(settingsTab || "accounts");
+
+  useEffect(() => {
+    if (settingsTab) {
+      setActiveTab(settingsTab);
+    }
+  }, [settingsTab]);
   const { projects, removeProject, fetchProjects } = useProjects();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [appPaths, setAppPaths] = useState<AppPaths | null>(null);
@@ -480,7 +488,8 @@ export function SettingsPage() {
       </div>
 
       <Tabs
-        defaultValue="accounts"
+        value={activeTab}
+        onValueChange={setActiveTab}
         orientation="vertical"
         className="flex-1 flex min-h-0 gap-0"
       >

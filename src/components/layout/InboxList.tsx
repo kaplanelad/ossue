@@ -12,6 +12,7 @@ import { BulkActionBar } from "@/components/inbox/BulkActionBar";
 import { NoteBulkActionBar } from "@/components/notes/NoteBulkActionBar";
 import { CreateNoteDialog } from "@/components/notes/CreateNoteDialog";
 import { SyncProgressBar } from "@/components/inbox/SyncProgressBar";
+import { NextSyncCountdown } from "@/components/inbox/NextSyncCountdown";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -783,6 +784,7 @@ export function InboxList() {
           </>
         )}
         <div className="flex shrink-0 items-center gap-1">
+          {!isSearchOpen && !isNotesOnly && <NextSyncCountdown />}
           {!isSearchOpen && (
             <Button
               variant="ghost"

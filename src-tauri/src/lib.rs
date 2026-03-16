@@ -15,11 +15,17 @@ use sea_orm::DatabaseConnection;
 
 mod commands;
 
+pub use ossue_core::queries::DEFAULT_REFRESH_INTERVAL_SECS;
+
 pub struct OAuthDeviceState {
     pub device_code: String,
     pub interval: u64,
     pub client_id: String,
     pub expires_at: std::time::Instant,
+}
+
+pub struct PeriodicSyncHandle {
+    pub interval_tx: tokio::sync::watch::Sender<u64>,
 }
 
 pub struct AppState {
@@ -31,6 +37,7 @@ pub struct AppState {
     pub repo_locks: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     pub repo_manager: Arc<ossue_core::services::repo_manager::RepoManager>,
     pub oauth_device_state: Arc<Mutex<Option<OAuthDeviceState>>>,
+    pub periodic_sync: Arc<Mutex<Option<PeriodicSyncHandle>>>,
 }
 
 impl AppState {
@@ -78,6 +85,7 @@ pub fn run() {
             repo_locks: Arc::new(Mutex::new(HashMap::new())),
             repo_manager: Arc::new(ossue_core::services::repo_manager::RepoManager::new()),
             oauth_device_state: Arc::new(Mutex::new(None)),
+            periodic_sync: Arc::new(Mutex::new(None)),
         })
         .setup(|app| {
             // System tray icon
@@ -126,6 +134,13 @@ pub fn run() {
                 }
             });
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Hide the window instead of closing so the app keeps running in the tray
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // Auth
@@ -225,6 +240,78 @@ pub async fn get_repo_lock(
         .entry(key.to_string())
         .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
         .clone()
+}
+
+async fn trigger_sync_all(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let db = match state.db.read().await.clone() {
+        Some(db) => db,
+        None => return,
+    };
+
+    let projects = match ossue_core::queries::list_sync_enabled_projects(&db).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(error = %e, "Periodic sync: failed to list projects");
+            return;
+        }
+    };
+    if projects.is_empty() {
+        return;
+    }
+
+    tracing::info!(
+        count = projects.len(),
+        "Periodic sync: syncing enabled projects"
+    );
+    for proj in &projects {
+        if let Err(e) = commands::items::start_sync(
+            &state,
+            proj.id.clone(),
+            app_handle.clone(),
+            commands::items::SyncMode::Incremental,
+        )
+        .await
+        {
+            tracing::warn!(project_id = %proj.id, error = %e, "Periodic sync: failed to start sync");
+        }
+    }
+}
+
+async fn periodic_sync_loop<F, Fut>(mut interval_rx: tokio::sync::watch::Receiver<u64>, on_tick: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let mut current_secs = *interval_rx.borrow();
+
+    loop {
+        if current_secs == 0 {
+            // Wait until interval changes to a non-zero value
+            if interval_rx.changed().await.is_err() {
+                break; // channel closed, app shutting down
+            }
+            current_secs = *interval_rx.borrow();
+            continue;
+        }
+
+        let sleep = tokio::time::sleep(std::time::Duration::from_secs(current_secs));
+        tokio::select! {
+            () = sleep => {
+                on_tick().await;
+            }
+            result = interval_rx.changed() => {
+                if result.is_err() {
+                    break; // channel closed
+                }
+                let new_secs = *interval_rx.borrow();
+                tracing::info!(old = current_secs, new = new_secs, "Periodic sync interval updated");
+                current_secs = new_secs;
+                // Loop restarts with new interval (resets the timer)
+            }
+        }
+    }
+    tracing::info!("Periodic sync scheduler stopped");
 }
 
 /// GUI apps launched outside a terminal (e.g., Finder/Spotlight on macOS,
@@ -345,25 +432,29 @@ async fn init_db(app: &tauri::AppHandle) -> Result<(), ossue_core::error::InitEr
         }
     }
 
+    // Read refresh_interval from settings before moving db into state
+    let refresh_interval = ossue_core::queries::get_refresh_interval(&db)
+        .await
+        .unwrap_or(DEFAULT_REFRESH_INTERVAL_SECS);
+
     // Store in state
     *state.db.write().await = Some(db);
 
     tracing::info!("Database initialized successfully");
 
-    // Spawn startup sync: emit events for all sync-enabled projects + clean up stale worktrees
+    // Spawn startup sync + worktree cleanup + periodic sync scheduler
     let app_handle = app.app_handle().clone();
     let db_arc = state.db.clone();
+    let periodic_sync_arc = state.periodic_sync.clone();
     tauri::async_runtime::spawn(async move {
         // Small delay to let the app UI initialize and set up event listeners
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
+        // Clean up stale worktrees from previous crashes
         if let Some(db) = db_arc.read().await.clone() {
             use ossue_core::models::project;
 
-            let projects = project::Entity::find().all(&db).await;
-
-            if let Ok(projects) = projects {
-                // Clean up stale worktrees from previous crashes
+            if let Ok(projects) = project::Entity::find().all(&db).await {
                 for proj in &projects {
                     ossue_core::services::repo_manager::RepoManager::cleanup_stale_worktrees(
                         &proj.platform,
@@ -372,19 +463,79 @@ async fn init_db(app: &tauri::AppHandle) -> Result<(), ossue_core::error::InitEr
                     );
                 }
                 tracing::info!("Stale worktree cleanup complete");
-
-                // Start sync for enabled projects
-                let sync_projects: Vec<_> = projects.iter().filter(|p| p.sync_enabled).collect();
-                tracing::info!(
-                    count = sync_projects.len(),
-                    "Starting startup sync for enabled projects"
-                );
-                for proj in &sync_projects {
-                    let _ = app_handle.emit("startup:sync", &proj.id);
-                }
             }
         }
+
+        // Start sync for all enabled projects
+        trigger_sync_all(&app_handle).await;
+
+        // Start the periodic sync scheduler
+        let (interval_tx, interval_rx) = tokio::sync::watch::channel(refresh_interval);
+        *periodic_sync_arc.lock().await = Some(PeriodicSyncHandle { interval_tx });
+
+        tracing::info!(
+            interval_secs = refresh_interval,
+            "Starting periodic sync scheduler"
+        );
+        periodic_sync_loop(interval_rx, || trigger_sync_all(&app_handle)).await;
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_periodic_sync_loop_zero_interval_waits_for_change() {
+        let (tx, rx) = tokio::sync::watch::channel(0u64);
+
+        // Spawn the loop with a no-op callback
+        let handle = tokio::spawn(async move { periodic_sync_loop(rx, || async {}).await });
+
+        // Give the loop time to start and block on the zero interval
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(
+            !handle.is_finished(),
+            "Loop should be waiting, not finished"
+        );
+
+        // Drop the sender to close the channel and stop the loop
+        drop(tx);
+
+        // The loop should finish once the channel is closed
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+        assert!(
+            result.is_ok(),
+            "Loop should have stopped after channel closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_periodic_sync_loop_interval_change_resets_timer() {
+        let (tx, rx) = tokio::sync::watch::channel(3600u64);
+        let tick_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let tick_count_clone = tick_count.clone();
+
+        let handle = tokio::spawn(async move {
+            periodic_sync_loop(rx, || {
+                let tc = tick_count_clone.clone();
+                async move {
+                    tc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            })
+            .await
+        });
+
+        // Change interval to something very short so the timer fires
+        tx.send(1).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+        // Should have ticked at least once
+        assert!(tick_count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+
+        drop(tx);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), handle).await;
+    }
 }
