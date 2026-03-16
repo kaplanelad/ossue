@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react";
 import { AnalysisStep } from "./AnalysisStep";
 import { AnalyzeActions } from "./AnalyzeActions";
+import type { ItemType } from "@/types";
 import type { AnalysisStepData } from "@/hooks/useAnalysisSteps";
 
 interface AnalysisReportProps {
@@ -10,7 +11,7 @@ interface AnalysisReportProps {
   analysisStatus: string | null;
   isComplete: boolean;
   itemId: string;
-  itemType: "issue" | "pr" | "discussion" | "note";
+  itemType: ItemType;
   onSendFollowUp: (message: string) => void;
   disabled: boolean;
 }

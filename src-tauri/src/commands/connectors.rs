@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::error::CommandError;
 use crate::AppState;
+use ossue_core::enums::Platform;
 use ossue_core::models::connector;
 use ossue_core::models::project;
 use ossue_core::services::github::GitHubClient;
@@ -16,7 +17,7 @@ use ossue_core::services::gitlab::GitLabClient;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AddConnectorInput {
     pub name: String,
-    pub platform: String,
+    pub platform: Platform,
     pub token: String,
     pub base_url: Option<String>,
 }
@@ -32,7 +33,7 @@ pub struct UpdateConnectorInput {
 pub struct ConnectorResponse {
     pub id: String,
     pub name: String,
-    pub platform: String,
+    pub platform: Platform,
     pub has_token: bool,
     pub token_preview: String,
     pub base_url: Option<String>,
@@ -133,15 +134,15 @@ pub async fn add_connector(
     let db = state.get_db().await?;
 
     // Validate base_url for GitLab
-    if input.platform == "gitlab" {
+    if input.platform == Platform::GitLab {
         if let Some(ref url) = input.base_url {
             validate_base_url(url)?;
         }
     }
 
     // Validate token by calling the appropriate API
-    match input.platform.as_str() {
-        "github" => {
+    match input.platform {
+        Platform::GitHub => {
             let client = match input.base_url {
                 Some(ref url) => {
                     GitHubClient::with_base_url(input.token.clone(), Some(url.clone()))
@@ -158,7 +159,7 @@ pub async fn add_connector(
                     }
                 })?;
         }
-        "gitlab" => {
+        Platform::GitLab => {
             let client = GitLabClient::new(input.token.clone(), input.base_url.clone());
             client
                 .list_projects()
@@ -169,11 +170,6 @@ pub async fn add_connector(
                         message: format!("Invalid token: {e}"),
                     }
                 })?;
-        }
-        _ => {
-            return Err(CommandError::Internal {
-                message: "Unknown platform. Use 'github' or 'gitlab'.".to_string(),
-            })
         }
     }
 
@@ -311,8 +307,8 @@ pub async fn list_connector_repos(
             }
         })?;
 
-    let result: Result<Vec<ConnectorRepo>, CommandError> = match conn.platform.as_str() {
-        "github" => {
+    let result: Result<Vec<ConnectorRepo>, CommandError> = match conn.platform {
+        Platform::GitHub => {
             let client = match conn.base_url {
                 Some(ref url) => GitHubClient::with_base_url(conn.token, Some(url.clone())),
                 None => GitHubClient::new(conn.token),
@@ -335,7 +331,7 @@ pub async fn list_connector_repos(
                 })
                 .collect())
         }
-        "gitlab" => {
+        Platform::GitLab => {
             let client = GitLabClient::new(conn.token, conn.base_url);
             let projects = client.list_projects().await.map_err(|e| {
                 tracing::error!(error = %e, connector_id = %connector_id, "Failed to list GitLab projects for connector");
@@ -355,9 +351,6 @@ pub async fn list_connector_repos(
                 })
                 .collect())
         }
-        _ => Err(CommandError::Internal {
-            message: "Unknown platform".to_string(),
-        }),
     };
     if let Ok(ref repos) = result {
         tracing::debug!(connector_id = %connector_id, count = repos.len(), "Listed connector repos");

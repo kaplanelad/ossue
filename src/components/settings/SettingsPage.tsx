@@ -31,7 +31,7 @@ import { toast } from "sonner";
 import { useAppStore, useNavigationStore } from "@/stores/appStore";
 import { useProjects } from "@/hooks/useProjects";
 import * as api from "@/lib/tauri";
-import type { AppSettings, AppPaths, Connector, BackupInfo, LogEntriesResponse, ProjectNote, AiSettings, ProjectSettingEntry } from "@/types";
+import type { AppSettings, AppPaths, Connector, Platform, AiProvider, BackupInfo, LogEntriesResponse, ProjectNote, AiSettings, ProjectSettingEntry } from "@/types";
 import { SettingHeader } from "./SettingHeader";
 import { AddProjectsDialog } from "./AddProjectsDialog";
 import { AIProviderSelector } from "./AIProviderSelector";
@@ -105,7 +105,7 @@ export function SettingsPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [newConnName, setNewConnName] = useState("");
-  const [newConnPlatform, setNewConnPlatform] = useState<"github" | "gitlab">("github");
+  const [newConnPlatform, setNewConnPlatform] = useState<Platform>("github");
   const [newConnToken, setNewConnToken] = useState("");
   const [newConnBaseUrl, setNewConnBaseUrl] = useState("");
   const [addingConn, setAddingConn] = useState(false);
@@ -587,7 +587,7 @@ export function SettingsPage() {
                             <Select
                               value={newConnPlatform}
                               onValueChange={(v) =>
-                                setNewConnPlatform(v as "github" | "gitlab")
+                                setNewConnPlatform(v as Platform)
                               }
                             >
                               <SelectTrigger>
@@ -1060,7 +1060,7 @@ export function SettingsPage() {
                           </button>
                           {expandedSyncFilters.has(project.id) && (
                             <div className="mt-2">
-                              <SyncFilters projectId={project.id} platform={project.platform as "github" | "gitlab"} />
+                              <SyncFilters projectId={project.id} platform={project.platform as Platform} />
                             </div>
                           )}
                         </div>
@@ -1537,7 +1537,7 @@ export function SettingsPage() {
                 <div className="max-w-3xl space-y-6">
                   <SettingHeader title="AI Provider" subtitle="Choose your AI provider, configure API access, and set model preferences" />
                   <AIProviderSelector
-                    mode={aiSettings.ai_mode as "api" | "claude_cli" | "cursor_cli"}
+                    mode={aiSettings.ai_mode as AiProvider}
                     hasApiKey={aiSettings.has_ai_api_key}
                     model={aiSettings.ai_model}
                     customInstructions={aiSettings.ai_custom_instructions}

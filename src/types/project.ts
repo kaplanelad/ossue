@@ -1,8 +1,10 @@
+import type { Platform } from "./connector";
+
 export interface Project {
   id: string;
   name: string;
   owner: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
   url: string;
   clone_path: string | null;
   api_token: string | null;

@@ -55,7 +55,7 @@ pub async fn analyze_with_api(
 
     let mut messages = history.to_vec();
     messages.push(ApiMessage {
-        role: "user".to_string(),
+        role: crate::enums::MessageRole::User,
         content: user_prompt,
     });
 

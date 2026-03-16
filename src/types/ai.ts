@@ -1,3 +1,8 @@
+export type AiMode = "api" | "cli";
+export type AiProvider = "api" | "claude_cli" | "cursor_cli";
+export type ReviewStrictness = "strict" | "pragmatic" | "lenient";
+export type ResponseTone = "friendly" | "neutral" | "terse";
+
 export interface ChatMessage {
   id: string;
   item_id: string;
@@ -18,12 +23,12 @@ export interface AnalyzeActionRequest {
 }
 
 export interface AiSettings {
-  ai_mode: "api" | "cli";
-  ai_provider: "api" | "claude_cli" | "cursor_cli";
+  ai_mode: AiMode;
+  ai_provider: AiProvider;
   ai_model: string;
   has_ai_api_key: boolean;
   ai_focus_areas: string[];
-  ai_review_strictness: "strict" | "pragmatic" | "lenient";
-  ai_response_tone: "friendly" | "neutral" | "terse";
+  ai_review_strictness: ReviewStrictness;
+  ai_response_tone: ResponseTone;
   ai_custom_instructions: string | null;
 }

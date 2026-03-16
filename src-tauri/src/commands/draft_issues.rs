@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::error::CommandError;
 use crate::AppState;
-use ossue_core::enums::{DraftIssueStatus, ItemType, ItemTypeData, NoteData};
+use ossue_core::enums::{AiMode, DraftIssueStatus, ItemType, ItemTypeData, MessageRole, NoteData};
 use ossue_core::models::item;
 use ossue_core::services::issue_creator::{CreateIssueRequest, CreateIssueResponse, IssueCreator};
 
@@ -13,7 +13,7 @@ use ossue_core::services::issue_creator::{CreateIssueRequest, CreateIssueRespons
 pub struct DraftIssueResponse {
     pub id: String,
     pub project_id: String,
-    pub status: String,
+    pub status: DraftIssueStatus,
     pub raw_content: String,
     pub title: Option<String>,
     pub body: Option<String>,
@@ -37,7 +37,7 @@ impl TryFrom<item::Model> for DraftIssueResponse {
         Ok(Self {
             id: m.id,
             project_id: m.project_id,
-            status: note_data.draft_status.to_string(),
+            status: note_data.draft_status,
             raw_content: note_data.raw_content,
             title: if m.title.is_empty() {
                 None
@@ -91,7 +91,7 @@ pub async fn list_draft_issues(
         .into_iter()
         .filter_map(|d| {
             let resp = DraftIssueResponse::try_from(d).ok()?;
-            if resp.status == "submitted" {
+            if resp.status == DraftIssueStatus::Submitted {
                 None
             } else {
                 Some(resp)
@@ -550,9 +550,11 @@ pub async fn generate_issue_from_draft(
     let (ai_mode, api_key, ai_model) = {
         let db = state.get_db().await?;
 
-        let ai_mode = get_setting(&db, "ai_mode")
-            .await
-            .unwrap_or_else(|| "api".to_string());
+        let ai_mode = AiMode::from_setting(
+            &get_setting(&db, "ai_mode")
+                .await
+                .unwrap_or_else(|| "api".to_string()),
+        );
         let api_key = get_setting(&db, "ai_api_key").await;
         let ai_model = get_setting(&db, "ai_model").await.filter(|s| !s.is_empty());
 
@@ -568,7 +570,7 @@ pub async fn generate_issue_from_draft(
         content = raw_content,
     );
 
-    let response_text = if ai_mode == "api" {
+    let response_text = if ai_mode.is_api() {
         // API mode
         let api_key = match api_key {
             Some(key) => key,
@@ -585,7 +587,7 @@ pub async fn generate_issue_from_draft(
         );
 
         let messages = vec![ossue_core::services::ai_api::ApiMessage {
-            role: "user".to_string(),
+            role: MessageRole::User,
             content: user_message,
         }];
 

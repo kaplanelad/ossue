@@ -3,8 +3,8 @@ use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
 use crate::enums::{
-    ActionType, DraftIssueStatus, ItemState, ItemStatus, ItemType, ItemTypeData, NoteData,
-    NoteType, Platform, PrItemData, ProviderItemData, ProviderMode,
+    ActionType, DraftIssueStatus, ItemState, ItemStatus, ItemType, ItemTypeData, MessageRole,
+    NoteData, NoteType, Platform, PrItemData, ProviderItemData, ProviderMode,
 };
 use crate::migration::Migrator;
 use crate::models::{
@@ -59,7 +59,7 @@ pub fn make_new_item(external_id: i32, item_type: ItemType) -> NewItem {
 
 pub struct ConnectorFactory {
     name: String,
-    platform: String,
+    platform: Platform,
     token: String,
     base_url: Option<String>,
 }
@@ -68,7 +68,7 @@ impl Default for ConnectorFactory {
     fn default() -> Self {
         Self {
             name: "test-connector".to_string(),
-            platform: "github".to_string(),
+            platform: Platform::GitHub,
             token: "ghp_test_token".to_string(),
             base_url: None,
         }
@@ -76,8 +76,8 @@ impl Default for ConnectorFactory {
 }
 
 impl ConnectorFactory {
-    pub fn platform(mut self, p: &str) -> Self {
-        self.platform = p.to_string();
+    pub fn platform(mut self, p: Platform) -> Self {
+        self.platform = p;
         self
     }
 
@@ -360,7 +360,7 @@ impl ItemFactory {
 
 pub struct ChatMessageFactory {
     item_id: String,
-    role: String,
+    role: MessageRole,
     content: String,
     input_tokens: Option<i32>,
     output_tokens: Option<i32>,
@@ -370,15 +370,15 @@ impl ChatMessageFactory {
     pub fn new(item_id: &str) -> Self {
         Self {
             item_id: item_id.to_string(),
-            role: "assistant".to_string(),
+            role: MessageRole::Assistant,
             content: "test message".to_string(),
             input_tokens: None,
             output_tokens: None,
         }
     }
 
-    pub fn role(mut self, r: &str) -> Self {
-        self.role = r.to_string();
+    pub fn role(mut self, r: MessageRole) -> Self {
+        self.role = r;
         self
     }
 

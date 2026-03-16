@@ -1,5 +1,5 @@
 import { useState, forwardRef } from "react";
-import type { Item } from "@/types";
+import type { Item, Platform } from "@/types";
 import { formatTimeAgo } from "@/lib/utils";
 import { getLabelColor } from "@/lib/labels";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +48,7 @@ const stateColors: Record<string, string> = {
 interface InboxItemProps {
   item: Item;
   repoName?: string;
-  platform?: "github" | "gitlab";
+  platform?: Platform;
   isSelected: boolean;
   isAnalyzing?: boolean;
   hasAnalysis?: boolean;

@@ -1,3 +1,5 @@
-export type ItemTypeFilter = "all" | "issue" | "pr" | "discussion" | "note";
+import type { ItemType } from "./item";
+
+export type ItemTypeFilter = "all" | ItemType;
 
 export type PageView = "onboarding" | "main" | "settings";

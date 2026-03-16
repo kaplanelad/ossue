@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import * as api from "@/lib/tauri";
-import type { Connector, Project } from "@/types";
+import type { Connector, Project, Platform } from "@/types";
 import { Loader2, Plus, ArrowRight, ArrowLeft, X } from "lucide-react";
 import { RepoBrowser, type RepoWithConnector } from "@/components/shared/RepoBrowser";
 import { SyncFilters } from "@/components/shared/SyncFilters";
@@ -14,7 +14,7 @@ interface AddedRepo {
   name: string;
   owner: string;
   url: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
 }
 
 type View = "select" | "sync";

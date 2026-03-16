@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::enums::ItemType;
+use crate::enums::{ItemType, MessageRole};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -32,7 +32,7 @@ struct ApiRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ApiMessage {
-    pub role: String,
+    pub role: MessageRole,
     pub content: String,
 }
 

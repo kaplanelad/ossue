@@ -1,7 +1,9 @@
+export type Platform = "github" | "gitlab";
+
 export interface Connector {
   id: string;
   name: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
   has_token: boolean;
   token_preview: string;
   base_url: string | null;

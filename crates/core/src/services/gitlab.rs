@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::issue_creator::{CreateIssueRequest, CreateIssueResponse, IssueCreator};
+use crate::enums::ItemType;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -711,11 +712,11 @@ impl GitLabClient {
         &self,
         project_id: i64,
         item_iid: i32,
-        item_type: &str,
+        item_type: &ItemType,
         comment: &str,
     ) -> Result<()> {
         let endpoint = match item_type {
-            "pr" => "merge_requests",
+            ItemType::PullRequest => "merge_requests",
             _ => "issues",
         };
         tracing::debug!(project_id = project_id, item_iid = item_iid, item_type = %item_type, "Posting comment");

@@ -1,13 +1,15 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::enums::Platform;
+
 #[derive(Clone, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "connectors")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub name: String,
-    pub platform: String,
+    pub platform: Platform,
     #[sea_orm(column_type = "Text")]
     pub token: String,
     pub base_url: Option<String>,
