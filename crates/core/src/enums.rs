@@ -184,6 +184,87 @@ impl fmt::Display for ProviderMode {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiMode {
+    #[serde(rename = "api")]
+    Api,
+    #[serde(rename = "cli")]
+    Cli,
+}
+
+impl AiMode {
+    pub fn is_api(&self) -> bool {
+        matches!(self, Self::Api)
+    }
+}
+
+impl fmt::Display for AiMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Api => write!(f, "api"),
+            Self::Cli => write!(f, "cli"),
+        }
+    }
+}
+
+impl AiMode {
+    pub fn from_setting(s: &str) -> Self {
+        match s {
+            "api" => Self::Api,
+            _ => Self::Cli,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[sea_orm(rs_type = "String", db_type = "String(StringLen::None)")]
+pub enum MessageRole {
+    #[sea_orm(string_value = "user")]
+    #[serde(rename = "user")]
+    User,
+    #[sea_orm(string_value = "assistant")]
+    #[serde(rename = "assistant")]
+    Assistant,
+}
+
+impl fmt::Display for MessageRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::User => write!(f, "user"),
+            Self::Assistant => write!(f, "assistant"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OAuthStatus {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "success")]
+    Success,
+    #[serde(rename = "slow_down")]
+    SlowDown,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "denied")]
+    Denied,
+    #[serde(rename = "error")]
+    Error,
+}
+
+impl fmt::Display for OAuthStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::Success => write!(f, "success"),
+            Self::SlowDown => write!(f, "slow_down"),
+            Self::Expired => write!(f, "expired"),
+            Self::Denied => write!(f, "denied"),
+            Self::Error => write!(f, "error"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DraftIssueStatus {
     #[serde(rename = "draft")]

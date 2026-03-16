@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use super::error::CommandError;
 use crate::AppState;
-use ossue_core::enums::ActionType;
+use ossue_core::enums::{ActionType, AiMode, MessageRole};
 use ossue_core::models::chat_message;
 use ossue_core::models::project_settings;
 use ossue_core::models::settings as settings_model;
@@ -24,7 +24,7 @@ struct AnalysisContext {
     item: ossue_core::models::item::Model,
     project: ossue_core::models::project::Model,
     token: String,
-    ai_mode: String,
+    ai_mode: AiMode,
     api_key_value: Option<String>,
     ai_model: Option<String>,
     custom_instructions: Option<String>,
@@ -80,9 +80,11 @@ impl AnalysisContext {
         let token = get_project_token(&project, db).await?;
 
         // 4. Get AI settings (global)
-        let ai_mode = get_setting(db, "ai_mode")
-            .await
-            .unwrap_or_else(|| "api".to_string());
+        let ai_mode = AiMode::from_setting(
+            &get_setting(db, "ai_mode")
+                .await
+                .unwrap_or_else(|| "api".to_string()),
+        );
         let api_key_value = get_setting(db, "ai_api_key").await;
         let ai_model = get_setting(db, "ai_model").await.filter(|s| !s.is_empty());
         let custom_instructions = get_setting(db, "custom_instructions").await;
@@ -236,7 +238,7 @@ impl AnalysisContext {
 pub struct ChatMessageResponse {
     pub id: String,
     pub item_id: String,
-    pub role: String,
+    pub role: MessageRole,
     pub content: String,
     pub created_at: String,
     pub input_tokens: Option<i32>,
@@ -317,7 +319,7 @@ pub async fn send_chat_message(
         let user_msg = chat_message::ActiveModel {
             id: Set(Uuid::new_v4().to_string()),
             item_id: Set(item_id.clone()),
-            role: Set("user".to_string()),
+            role: Set(MessageRole::User),
             content: Set(message.clone()),
             created_at: Set(now),
             input_tokens: Set(None),
@@ -442,7 +444,7 @@ pub async fn send_chat_message(
     let (repo_path, chat_worktree): (
         Option<std::path::PathBuf>,
         Option<ossue_core::services::repo_manager::AnalysisWorktree>,
-    ) = if ctx.ai_mode != "api" {
+    ) = if !ctx.ai_mode.is_api() {
         let repo_lock_key = format!(
             "{}/{}/{}",
             ctx.project.platform, ctx.project.owner, ctx.project.name
@@ -505,7 +507,7 @@ pub async fn send_chat_message(
         (None, None)
     };
 
-    let (response_content, input_tokens, output_tokens, model_used) = if ctx.ai_mode == "api" {
+    let (response_content, input_tokens, output_tokens, model_used) = if ctx.ai_mode.is_api() {
         let api_key_value = ctx.api_key_value.ok_or_else(|| {
             tracing::error!(item_id = %item_id, "AI API key not configured");
             CommandError::AiNotConfigured
@@ -537,7 +539,7 @@ pub async fn send_chat_message(
         // Prepend system prompt to conversation text
         let mut prompt_text = format!("System: {}\n\n", system_prompt);
         for msg in &api_messages {
-            let role_label = if msg.role == "user" {
+            let role_label = if msg.role == MessageRole::User {
                 "User"
             } else {
                 "Assistant"
@@ -583,7 +585,7 @@ pub async fn send_chat_message(
     let assistant_msg = chat_message::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         item_id: Set(item_id.clone()),
-        role: Set("assistant".to_string()),
+        role: Set(MessageRole::Assistant),
         content: Set(response_content.clone()),
         created_at: Set(chrono::Utc::now().naive_utc()),
         input_tokens: Set(input_tokens),
@@ -1059,7 +1061,7 @@ pub async fn analyze_item_action(
     {
         let db = state.get_db().await?;
 
-        let provider_mode = if ctx.ai_mode == "api" {
+        let provider_mode = if ctx.ai_mode.is_api() {
             ossue_core::enums::ProviderMode::Api
         } else {
             ossue_core::enums::ProviderMode::Cli
@@ -1080,7 +1082,7 @@ pub async fn analyze_item_action(
     }
 
     // Phase 4: Run AI analysis
-    let result = if ctx.ai_mode != "api" {
+    let result = if !ctx.ai_mode.is_api() {
         // CLI mode - needs the worktree/repo path
         let cli_path = analysis_path.ok_or_else(|| {
             if let Some(ref wt) = worktree {
@@ -1093,7 +1095,7 @@ pub async fn analyze_item_action(
             }
         })?;
 
-        let cli_tool = ossue_core::services::provider::CliTool::from_str(&ctx.ai_mode)
+        let cli_tool = ossue_core::services::provider::CliTool::from_str(&ctx.ai_mode.to_string())
             .unwrap_or(ossue_core::services::provider::CliTool::ClaudeCode);
 
         if action_type == ActionType::Analyze {
@@ -1124,7 +1126,7 @@ pub async fn analyze_item_action(
                     let user_msg = chat_message::ActiveModel {
                         id: Set(user_msg_id.clone()),
                         item_id: Set(request.item_id.clone()),
-                        role: Set("user".to_string()),
+                        role: Set(MessageRole::User),
                         content: Set(step.display_label.clone()),
                         created_at: Set(now),
                         input_tokens: Set(None),
@@ -1143,7 +1145,7 @@ pub async fn analyze_item_action(
                 let user_chat_msg = ChatMessageResponse {
                     id: user_msg_id,
                     item_id: request.item_id.clone(),
-                    role: "user".to_string(),
+                    role: MessageRole::User,
                     content: step.display_label.clone(),
                     created_at: now.to_string(),
                     input_tokens: None,
@@ -1202,7 +1204,7 @@ pub async fn analyze_item_action(
                     let assistant_msg = chat_message::ActiveModel {
                         id: Set(assistant_msg_id.clone()),
                         item_id: Set(request.item_id.clone()),
-                        role: Set("assistant".to_string()),
+                        role: Set(MessageRole::Assistant),
                         content: Set(response_content.clone()),
                         created_at: Set(assistant_now),
                         input_tokens: Set(None),
@@ -1222,7 +1224,7 @@ pub async fn analyze_item_action(
                 let assistant_chat_msg = ChatMessageResponse {
                     id: assistant_msg_id,
                     item_id: request.item_id.clone(),
-                    role: "assistant".to_string(),
+                    role: MessageRole::Assistant,
                     content: response_content,
                     created_at: assistant_now.to_string(),
                     input_tokens: None,
@@ -1245,7 +1247,7 @@ pub async fn analyze_item_action(
             Ok(last_saved.unwrap_or(ChatMessageResponse {
                 id: String::new(),
                 item_id: request.item_id.clone(),
-                role: "assistant".to_string(),
+                role: MessageRole::Assistant,
                 content: String::new(),
                 created_at: chrono::Utc::now().naive_utc().to_string(),
                 input_tokens: None,
@@ -1277,7 +1279,7 @@ pub async fn analyze_item_action(
             let user_msg = chat_message::ActiveModel {
                 id: Set(Uuid::new_v4().to_string()),
                 item_id: Set(request.item_id.clone()),
-                role: Set("user".to_string()),
+                role: Set(MessageRole::User),
                 content: Set(display_label.clone()),
                 created_at: Set(now),
                 input_tokens: Set(None),
@@ -1294,7 +1296,7 @@ pub async fn analyze_item_action(
             let assistant_msg = chat_message::ActiveModel {
                 id: Set(Uuid::new_v4().to_string()),
                 item_id: Set(request.item_id.clone()),
-                role: Set("assistant".to_string()),
+                role: Set(MessageRole::Assistant),
                 content: Set(response_content.clone()),
                 created_at: Set(chrono::Utc::now().naive_utc()),
                 input_tokens: Set(None),
@@ -1375,7 +1377,7 @@ pub async fn analyze_item_action(
                     let user_msg = chat_message::ActiveModel {
                         id: Set(user_msg_id.clone()),
                         item_id: Set(request.item_id.clone()),
-                        role: Set("user".to_string()),
+                        role: Set(MessageRole::User),
                         content: Set(step.display_label.clone()),
                         created_at: Set(now),
                         input_tokens: Set(None),
@@ -1394,7 +1396,7 @@ pub async fn analyze_item_action(
                 let user_chat_msg = ChatMessageResponse {
                     id: user_msg_id,
                     item_id: request.item_id.clone(),
-                    role: "user".to_string(),
+                    role: MessageRole::User,
                     content: step.display_label.clone(),
                     created_at: now.to_string(),
                     input_tokens: None,
@@ -1411,7 +1413,7 @@ pub async fn analyze_item_action(
 
                 // c. Add step's user_prompt (NOT display_label) to api_conversation
                 api_conversation.push(ApiMessage {
-                    role: "user".to_string(),
+                    role: MessageRole::User,
                     content: step.user_prompt.clone(),
                 });
 
@@ -1431,7 +1433,7 @@ pub async fn analyze_item_action(
                     let assistant_msg = chat_message::ActiveModel {
                         id: Set(assistant_msg_id.clone()),
                         item_id: Set(request.item_id.clone()),
-                        role: Set("assistant".to_string()),
+                        role: Set(MessageRole::Assistant),
                         content: Set(response_content.clone()),
                         created_at: Set(assistant_now),
                         input_tokens: Set(input_tokens),
@@ -1453,7 +1455,7 @@ pub async fn analyze_item_action(
                 let assistant_chat_msg = ChatMessageResponse {
                     id: assistant_msg_id,
                     item_id: request.item_id.clone(),
-                    role: "assistant".to_string(),
+                    role: MessageRole::Assistant,
                     content: response_content.clone(),
                     created_at: assistant_now.to_string(),
                     input_tokens,
@@ -1470,7 +1472,7 @@ pub async fn analyze_item_action(
 
                 // i. Add assistant response to api_conversation
                 api_conversation.push(ApiMessage {
-                    role: "assistant".to_string(),
+                    role: MessageRole::Assistant,
                     content: response_content,
                 });
 
@@ -1483,7 +1485,7 @@ pub async fn analyze_item_action(
             Ok(last_saved.unwrap_or(ChatMessageResponse {
                 id: String::new(),
                 item_id: request.item_id.clone(),
-                role: "assistant".to_string(),
+                role: MessageRole::Assistant,
                 content: String::new(),
                 created_at: chrono::Utc::now().naive_utc().to_string(),
                 input_tokens: None,
@@ -1501,7 +1503,7 @@ pub async fn analyze_item_action(
                 .collect();
 
             api_messages.push(ApiMessage {
-                role: "user".to_string(),
+                role: MessageRole::User,
                 content: action_prompt.clone(),
             });
 
@@ -1513,7 +1515,7 @@ pub async fn analyze_item_action(
                 let user_msg = chat_message::ActiveModel {
                     id: Set(Uuid::new_v4().to_string()),
                     item_id: Set(request.item_id.clone()),
-                    role: Set("user".to_string()),
+                    role: Set(MessageRole::User),
                     content: Set(display_label),
                     created_at: Set(chrono::Utc::now().naive_utc()),
                     input_tokens: Set(None),
@@ -1545,7 +1547,7 @@ pub async fn analyze_item_action(
             let assistant_msg = chat_message::ActiveModel {
                 id: Set(Uuid::new_v4().to_string()),
                 item_id: Set(request.item_id.clone()),
-                role: Set("assistant".to_string()),
+                role: Set(MessageRole::Assistant),
                 content: Set(response_content.clone()),
                 created_at: Set(chrono::Utc::now().naive_utc()),
                 input_tokens: Set(input_tokens),
@@ -1760,7 +1762,7 @@ fn truncate_chat_history(messages: Vec<ApiMessage>) -> Vec<ApiMessage> {
     // Ensure we start with a user message after the first message
     // (to maintain valid alternation)
     if let Some(first_kept) = kept.first() {
-        if first_kept.role == "assistant" {
+        if first_kept.role == MessageRole::Assistant {
             kept.remove(0);
         }
     }
@@ -1911,12 +1913,7 @@ pub async fn post_item_comment(
                         message: "GitLab project has no external project ID".to_string(),
                     })?;
             client
-                .post_comment(
-                    gitlab_project_id,
-                    external_id,
-                    &item.item_type.to_string(),
-                    &comment,
-                )
+                .post_comment(gitlab_project_id, external_id, &item.item_type, &comment)
                 .await
                 .map_err(|e| CommandError::PlatformApi {
                     message: e.to_string(),

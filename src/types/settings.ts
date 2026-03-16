@@ -1,12 +1,14 @@
+import type { AiMode, AiProvider, ReviewStrictness, ResponseTone } from "./ai";
+
 export interface AppSettings {
-  ai_mode: "api" | "cli";
-  ai_provider: "api" | "claude_cli" | "cursor_cli";
+  ai_mode: AiMode;
+  ai_provider: AiProvider;
   has_ai_api_key: boolean;
   ai_model: string;
   ai_cli_path: string | null;
   ai_focus_areas: string[];
-  ai_review_strictness: "strict" | "pragmatic" | "lenient";
-  ai_response_tone: "friendly" | "neutral" | "terse";
+  ai_review_strictness: ReviewStrictness;
+  ai_response_tone: ResponseTone;
   ai_custom_instructions: string | null;
   attention_sensitive_paths: string[];
   refresh_interval: number;

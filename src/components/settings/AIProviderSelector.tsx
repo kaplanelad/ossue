@@ -10,22 +10,21 @@ import {
 } from "@/components/ui/select";
 import { Eye, EyeOff, Zap, Terminal, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-type AiMode = "api" | "claude_cli" | "cursor_cli";
+import type { AiProvider } from "@/types";
 
 interface Props {
-  mode: AiMode;
+  mode: AiProvider;
   hasApiKey: boolean;
   model: string;
   customInstructions: string | null;
-  onModeChange: (mode: AiMode) => void;
+  onModeChange: (mode: AiProvider) => void;
   onApiKeyChange: (key: string) => void;
   onModelChange: (model: string) => void;
   onCustomInstructionsChange: (instructions: string) => void;
 }
 
 const PROVIDER_CARDS: {
-  mode: AiMode;
+  mode: AiProvider;
   title: string;
   description: string;
   speed: string;

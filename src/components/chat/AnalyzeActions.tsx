@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/utils";
+import type { ItemType } from "@/types";
 import * as api from "@/lib/tauri";
 
 // Track which items have already been acted on across re-renders
@@ -22,7 +23,7 @@ const closedItems = new Set<string>();
 
 interface AnalyzeActionsProps {
   itemId: string;
-  itemType: "issue" | "pr" | "discussion" | "note";
+  itemType: ItemType;
   lastMessageContent: string;
   onSendFollowUp: (message: string) => void;
   disabled: boolean;

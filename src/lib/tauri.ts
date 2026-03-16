@@ -14,6 +14,7 @@ import type {
   GitLabProject,
   Connector,
   ConnectorRepo,
+  Platform,
   BackupInfo,
   LogEntriesResponse,
   ProjectNote,
@@ -51,7 +52,7 @@ export const listConnectors = () =>
   invoke<Connector[]>("list_connectors");
 export const addConnector = (input: {
   name: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
   token: string;
   base_url?: string;
 }) => invoke<Connector>("add_connector", { input });

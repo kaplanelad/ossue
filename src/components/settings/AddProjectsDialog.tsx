@@ -14,7 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import * as api from "@/lib/tauri";
-import type { Connector, Project } from "@/types";
+import type { Connector, Platform, Project } from "@/types";
 import { Loader2, Plus, ChevronRight } from "lucide-react";
 import { RepoBrowser, type RepoWithConnector } from "@/components/shared/RepoBrowser";
 import { SyncFilters } from "@/components/shared/SyncFilters";
@@ -40,7 +40,7 @@ export function AddProjectsDialog({
   const [addingUrl, setAddingUrl] = useState(false);
   const [addingSelected, setAddingSelected] = useState(false);
   const [addedProjects, setAddedProjects] = useState<
-    { id: string; name: string; owner: string; platform: "github" | "gitlab" }[]
+    { id: string; name: string; owner: string; platform: Platform }[]
   >([]);
   const [expandedAdvanced, setExpandedAdvanced] = useState<Set<string>>(
     new Set()

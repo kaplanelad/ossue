@@ -1,13 +1,15 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::enums::MessageRole;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "chat_messages")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub item_id: String,
-    pub role: String,
+    pub role: MessageRole,
     #[sea_orm(column_type = "Text")]
     pub content: String,
     pub created_at: chrono::NaiveDateTime,

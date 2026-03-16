@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ItemType } from "@/types";
 import { AIMessage } from "./AIMessage";
 import { UserMessage } from "./UserMessage";
 import { AnalysisReport } from "./AnalysisReport";
@@ -18,7 +18,7 @@ interface MessageListProps {
   onAnalyze: () => void;
   onAnalyzeWithContext: () => void;
   itemId: string;
-  itemType: "issue" | "pr" | "discussion" | "note";
+  itemType: ItemType;
   onSendFollowUp: (message: string) => void;
 }
 

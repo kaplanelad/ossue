@@ -40,10 +40,12 @@ export interface NoteTypeData {
 
 export type ItemTypeData = IssueTypeData | PrTypeData | DiscussionTypeData | NoteTypeData;
 
+export type ItemType = "issue" | "pr" | "discussion" | "note";
+
 export interface Item {
   id: string;
   project_id: string;
-  item_type: "issue" | "pr" | "discussion" | "note";
+  item_type: ItemType;
   title: string;
   body: string;
   type_data: ItemTypeData;

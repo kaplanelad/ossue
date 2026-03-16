@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, Copy, Loader2, FileText, Search, MessageSquare, Sparkles } from "lucide-react";
 import { Markdown } from "./Markdown";
+import type { ItemType } from "@/types";
 import type { AnalysisStepData } from "@/hooks/useAnalysisSteps";
 
 const STEP_ICONS: Record<string, React.ElementType> = {
@@ -17,7 +18,7 @@ interface AnalysisStepProps {
   isLast: boolean;
   streamingContent?: string;
   analysisStatus?: string | null;
-  itemType: "issue" | "pr" | "discussion" | "note";
+  itemType: ItemType;
 }
 
 export function AnalysisStep({

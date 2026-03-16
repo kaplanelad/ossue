@@ -4,6 +4,7 @@ use tauri::State;
 
 use super::error::CommandError;
 use crate::AppState;
+use ossue_core::enums::OAuthStatus;
 use ossue_core::models::connector;
 use ossue_core::models::settings as settings_model;
 use ossue_core::services::github::GitHubClient;
@@ -246,7 +247,7 @@ pub async fn start_github_oauth(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OAuthPollResponse {
-    pub status: String,
+    pub status: OAuthStatus,
     pub access_token: Option<String>,
 }
 
@@ -263,7 +264,7 @@ pub async fn poll_github_oauth(
 
     if ds.expires_at < std::time::Instant::now() {
         return Ok(OAuthPollResponse {
-            status: "expired".to_string(),
+            status: OAuthStatus::Expired,
             access_token: None,
         });
     }
@@ -280,36 +281,36 @@ pub async fn poll_github_oauth(
 
     match result {
         ossue_core::services::oauth::PollResult::Pending => Ok(OAuthPollResponse {
-            status: "pending".to_string(),
+            status: OAuthStatus::Pending,
             access_token: None,
         }),
         ossue_core::services::oauth::PollResult::Success { access_token, .. } => {
             *state.oauth_device_state.lock().await = None;
             Ok(OAuthPollResponse {
-                status: "success".to_string(),
+                status: OAuthStatus::Success,
                 access_token: Some(access_token),
             })
         }
         ossue_core::services::oauth::PollResult::SlowDown => Ok(OAuthPollResponse {
-            status: "slow_down".to_string(),
+            status: OAuthStatus::SlowDown,
             access_token: None,
         }),
         ossue_core::services::oauth::PollResult::Expired => {
             *state.oauth_device_state.lock().await = None;
             Ok(OAuthPollResponse {
-                status: "expired".to_string(),
+                status: OAuthStatus::Expired,
                 access_token: None,
             })
         }
         ossue_core::services::oauth::PollResult::Denied => {
             *state.oauth_device_state.lock().await = None;
             Ok(OAuthPollResponse {
-                status: "denied".to_string(),
+                status: OAuthStatus::Denied,
                 access_token: None,
             })
         }
         ossue_core::services::oauth::PollResult::Error { message: _ } => Ok(OAuthPollResponse {
-            status: "error".to_string(),
+            status: OAuthStatus::Error,
             access_token: None,
         }),
     }

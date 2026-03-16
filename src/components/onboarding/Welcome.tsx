@@ -7,7 +7,7 @@ import { RepoPicker } from "./RepoPicker";
 import { GitHubOAuthFlow } from "@/components/shared/GitHubOAuthFlow";
 import { useAppStore } from "@/stores/appStore";
 import * as api from "@/lib/tauri";
-import type { Connector } from "@/types";
+import type { Connector, Platform, AiProvider } from "@/types";
 import {
   Github,
   Loader2,
@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 
 type OnboardingStep = "welcome" | "connect" | "repos" | "ai" | "done";
-type AiMode = "api" | "claude_cli" | "cursor_cli";
 
 const STEPS: { key: OnboardingStep; label: string }[] = [
   { key: "connect", label: "Connect" },
@@ -34,7 +33,7 @@ const STEPS: { key: OnboardingStep; label: string }[] = [
 ];
 
 const AI_PROVIDERS: {
-  mode: AiMode;
+  mode: AiProvider;
   title: string;
   description: string;
   speed: string;
@@ -94,17 +93,17 @@ export function Welcome() {
   const [gitlabBaseUrl, setGitlabBaseUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [savingProvider, setSavingProvider] = useState<
-    "github" | "gitlab" | null
+    Platform | null
   >(null);
   const [error, setError] = useState<string | null>(null);
-  const [connectProvider, setConnectProvider] = useState<"github" | "gitlab">(
+  const [connectProvider, setConnectProvider] = useState<Platform>(
     "github",
   );
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const { setCurrentPage, setProjects, setOnboardingJustCompleted } = useAppStore();
 
   // AI settings state
-  const [aiMode, setAiMode] = useState<AiMode>("claude_cli");
+  const [aiMode, setAiMode] = useState<AiProvider>("claude_cli");
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiModel, setAiModel] = useState("");
   const [aiCustomInstructions, setAiCustomInstructions] = useState("");

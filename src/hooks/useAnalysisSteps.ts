@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ItemType } from "@/types";
 
 export interface AnalysisStepData {
   stepIndex: number;
@@ -35,7 +35,7 @@ const EXPECTED_STEPS: Record<string, string[]> = {
 
 export function useAnalysisSteps(
   messages: ChatMessage[],
-  itemType: "issue" | "pr" | "discussion" | "note",
+  itemType: ItemType,
   streamingContent: string,
   isStreaming: boolean,
   isLoading: boolean,

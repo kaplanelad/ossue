@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import * as api from "@/lib/tauri";
+import type { Platform } from "@/types";
 import { errorMessage } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -81,7 +82,7 @@ interface CategoryState {
 
 interface SyncFiltersProps {
   projectId: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
   compact?: boolean;
 }
 

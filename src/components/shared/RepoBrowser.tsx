@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import * as api from "@/lib/tauri";
-import type { Connector, ConnectorRepo, Project } from "@/types";
+import type { Connector, ConnectorRepo, Platform, Project } from "@/types";
 import { Loader2, Check, Search, Github, GitlabIcon, Star } from "lucide-react";
 
 const PAGE_SIZE = 50;
@@ -19,7 +19,7 @@ const PAGE_SIZE = 50;
 export interface RepoWithConnector extends ConnectorRepo {
   connectorId: string;
   connectorName: string;
-  platform: "github" | "gitlab";
+  platform: Platform;
 }
 
 interface RepoBrowserProps {
