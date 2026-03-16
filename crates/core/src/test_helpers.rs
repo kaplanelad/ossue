@@ -136,6 +136,11 @@ impl ProjectFactory {
         self
     }
 
+    pub fn sync_enabled(mut self, enabled: bool) -> Self {
+        self.sync_enabled = enabled;
+        self
+    }
+
     pub fn connector_id(mut self, id: &str) -> Self {
         self.connector_id = Some(id.to_string());
         self

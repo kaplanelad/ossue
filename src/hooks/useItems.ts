@@ -77,12 +77,6 @@ export function useItems() {
       setSyncStatus(status) {
         useAppStore.getState().setSyncStatus(status);
       },
-      refreshProjects() {
-        api.listProjects().then(useAppStore.getState().setProjects).catch((err) => console.error("[sync] refresh failed:", err));
-      },
-      getSyncingProjectCount() {
-        return Object.keys(useAppStore.getState().syncingProjects).length;
-      },
     });
     managerRef.current = manager;
     manager.start();
@@ -243,21 +237,6 @@ export function useItems() {
     },
     [removeItem]
   );
-
-  // --- Startup sync (once per session) ---
-  useEffect(() => {
-    managerRef.current?.startupSync();
-  }, [projects]);
-
-  // --- Periodic sync ---
-  const refreshInterval = useAppStore((s) => s.refreshInterval);
-
-  useEffect(() => {
-    managerRef.current?.startPeriodicSync(refreshInterval);
-    return () => {
-      managerRef.current?.stopPeriodicSync();
-    };
-  }, [refreshInterval]);
 
   // --- Post-onboarding sync ---
   useEffect(() => {

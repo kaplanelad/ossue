@@ -4,7 +4,30 @@ use sea_orm::{
 };
 
 use crate::enums::{DraftIssueStatus, ItemStatus, ItemType};
-use crate::models::item;
+use crate::models::{item, project, settings};
+
+/// Default sync interval in seconds (30 minutes).
+pub const DEFAULT_REFRESH_INTERVAL_SECS: u64 = 1800;
+
+/// Read the refresh interval from the settings table, falling back to the default.
+pub async fn get_refresh_interval(db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
+    let interval = settings::Entity::find_by_id("refresh_interval")
+        .one(db)
+        .await?
+        .and_then(|s| s.value.parse().ok())
+        .unwrap_or(DEFAULT_REFRESH_INTERVAL_SECS);
+    Ok(interval)
+}
+
+/// Query all projects with sync enabled.
+pub async fn list_sync_enabled_projects(
+    db: &DatabaseConnection,
+) -> Result<Vec<project::Model>, sea_orm::DbErr> {
+    project::Entity::find()
+        .filter(project::Column::SyncEnabled.eq(true))
+        .all(db)
+        .await
+}
 
 /// Parameters for querying items.
 #[derive(Debug, Default)]
@@ -348,6 +371,7 @@ mod tests {
     use super::*;
     use crate::enums::{ItemStatus, ItemType};
     use crate::test_helpers::*;
+    use sea_orm::Set;
 
     async fn setup() -> (sea_orm::DatabaseConnection, crate::models::project::Model) {
         let db = setup_test_db().await;
@@ -1357,5 +1381,76 @@ mod tests {
 
         let counts = count_draft_notes_grouped(&db).await.unwrap();
         assert!(counts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_sync_enabled_projects_returns_only_enabled() {
+        let db = setup_test_db().await;
+
+        ProjectFactory::default()
+            .name("enabled-1")
+            .create(&db)
+            .await;
+        ProjectFactory::default()
+            .name("disabled-1")
+            .sync_enabled(false)
+            .create(&db)
+            .await;
+        ProjectFactory::default()
+            .name("enabled-2")
+            .create(&db)
+            .await;
+
+        let projects = super::list_sync_enabled_projects(&db).await.unwrap();
+        assert_eq!(projects.len(), 2);
+        let names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"enabled-1"));
+        assert!(names.contains(&"enabled-2"));
+    }
+
+    #[tokio::test]
+    async fn list_sync_enabled_projects_empty_db() {
+        let db = setup_test_db().await;
+        let projects = super::list_sync_enabled_projects(&db).await.unwrap();
+        assert!(projects.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_refresh_interval_returns_default_when_no_setting() {
+        let db = setup_test_db().await;
+        let interval = super::get_refresh_interval(&db).await.unwrap();
+        assert_eq!(interval, super::DEFAULT_REFRESH_INTERVAL_SECS);
+    }
+
+    #[tokio::test]
+    async fn get_refresh_interval_returns_stored_value() {
+        use crate::models::settings;
+        use sea_orm::ActiveModelTrait;
+
+        let db = setup_test_db().await;
+        let setting = settings::ActiveModel {
+            key: Set("refresh_interval".to_string()),
+            value: Set("600".to_string()),
+        };
+        setting.insert(&db).await.unwrap();
+
+        let interval = super::get_refresh_interval(&db).await.unwrap();
+        assert_eq!(interval, 600);
+    }
+
+    #[tokio::test]
+    async fn get_refresh_interval_returns_default_for_invalid_value() {
+        use crate::models::settings;
+        use sea_orm::ActiveModelTrait;
+
+        let db = setup_test_db().await;
+        let setting = settings::ActiveModel {
+            key: Set("refresh_interval".to_string()),
+            value: Set("not_a_number".to_string()),
+        };
+        setting.insert(&db).await.unwrap();
+
+        let interval = super::get_refresh_interval(&db).await.unwrap();
+        assert_eq!(interval, super::DEFAULT_REFRESH_INTERVAL_SECS);
     }
 }

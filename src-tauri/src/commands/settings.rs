@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use super::error::CommandError;
-use crate::AppState;
+use crate::{AppState, DEFAULT_REFRESH_INTERVAL_SECS};
 use ossue_core::models::connector;
 use ossue_core::models::project_settings;
 use ossue_core::models::settings as settings_model;
@@ -148,10 +148,9 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Com
         .unwrap_or_else(|| "anthropic".to_string());
     let has_ai_api_key = get_setting(&db, "ai_api_key").await.is_some();
     let ai_model = get_setting(&db, "ai_model").await.unwrap_or_default();
-    let refresh_interval = get_setting(&db, "refresh_interval")
+    let refresh_interval = ossue_core::queries::get_refresh_interval(&db)
         .await
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
+        .unwrap_or(DEFAULT_REFRESH_INTERVAL_SECS);
     let github_connected = get_setting(&db, "github_token").await.is_some();
     let gitlab_connected = get_setting(&db, "gitlab_token").await.is_some();
     let log_level = get_setting(&db, "log_level")
@@ -198,8 +197,15 @@ pub async fn update_setting(
     tracing::info!(key = %key, "Updating setting");
     let db = state.get_db().await?;
 
+    // Parse refresh interval before consuming value
+    let new_refresh_interval = if key == "refresh_interval" {
+        value.parse::<u64>().ok()
+    } else {
+        None
+    };
+
     let setting = settings_model::ActiveModel {
-        key: Set(key.clone()),
+        key: Set(key),
         value: Set(value),
     };
 
@@ -212,11 +218,18 @@ pub async fn update_setting(
         .exec(&db)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, key = %key, "Failed to update setting in database");
+            tracing::error!(error = %e, "Failed to update setting in database");
             CommandError::Internal {
                 message: e.to_string(),
             }
         })?;
+
+    // Notify the periodic sync scheduler when the refresh interval changes
+    if let Some(secs) = new_refresh_interval {
+        if let Some(handle) = state.periodic_sync.lock().await.as_ref() {
+            let _ = handle.interval_tx.send(secs);
+        }
+    }
 
     Ok(())
 }
@@ -240,6 +253,13 @@ pub async fn delete_setting(state: State<'_, AppState>, key: String) -> Result<(
                 message: e.to_string(),
             }
         })?;
+
+    // Reset periodic sync scheduler to default interval when refresh_interval is deleted
+    if key == "refresh_interval" {
+        if let Some(handle) = state.periodic_sync.lock().await.as_ref() {
+            let _ = handle.interval_tx.send(DEFAULT_REFRESH_INTERVAL_SECS);
+        }
+    }
 
     Ok(())
 }
