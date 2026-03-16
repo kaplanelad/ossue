@@ -7,6 +7,50 @@ use crate::services::github::GitHubClient;
 use crate::services::gitlab::GitLabClient;
 use crate::sync;
 
+/// Per-project sync filter configuration loaded from project_settings.
+#[derive(Debug, Clone)]
+pub struct SyncConfig {
+    pub sync_from_date_issues: Option<String>,
+    pub sync_from_date_prs: Option<String>,
+    pub sync_from_date_discussions: Option<String>,
+    pub sync_issues: bool,
+    pub sync_prs: bool,
+    pub sync_discussions: bool,
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            sync_from_date_issues: None,
+            sync_from_date_prs: None,
+            sync_from_date_discussions: None,
+            sync_issues: true,
+            sync_prs: true,
+            sync_discussions: true,
+        }
+    }
+}
+
+/// Compute the effective `since` value for sync.
+/// `sync_from_date` acts as a floor — we never fetch items older than this.
+fn compute_since(
+    is_full_reconciliation: bool,
+    last_sync_at: Option<chrono::NaiveDateTime>,
+    sync_from_date: Option<&str>,
+) -> Option<String> {
+    if is_full_reconciliation {
+        sync_from_date.map(|s| s.to_string())
+    } else {
+        let last_sync = last_sync_at.map(|ts| ts.format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        match (last_sync, sync_from_date) {
+            (Some(ls), Some(sf)) => Some(if ls.as_str() > sf { ls } else { sf.to_string() }),
+            (Some(ls), None) => Some(ls),
+            (None, Some(sf)) => Some(sf.to_string()),
+            (None, None) => None,
+        }
+    }
+}
+
 /// Trait for receiving sync progress updates.
 /// Implemented by the Tauri layer to emit events to the frontend.
 #[async_trait::async_trait]
@@ -71,6 +115,7 @@ pub trait PlatformSync: Send + Sync {
     async fn fetch_discussions_page(
         &self,
         cursor: Option<&str>,
+        since: Option<&str>,
     ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error>;
 
     /// Called once before sync starts for any platform-specific
@@ -206,6 +251,7 @@ impl PlatformSync for GitHubPlatformSync {
     async fn fetch_discussions_page(
         &self,
         cursor: Option<&str>,
+        since: Option<&str>,
     ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error> {
         let now = Utc::now().naive_utc();
 
@@ -215,8 +261,18 @@ impl PlatformSync for GitHubPlatformSync {
             .await
             .map_err(|e| Error::PlatformApi(e.to_string()))?;
 
+        let mut hit_cutoff = false;
         let new_items: Vec<sync::NewItem> = discussions
             .iter()
+            .filter(|d| {
+                if let Some(since_val) = since {
+                    if d.updated_at.as_str() < since_val {
+                        hit_cutoff = true;
+                        return false;
+                    }
+                }
+                true
+            })
             .map(|d| {
                 let author = d
                     .author
@@ -245,7 +301,8 @@ impl PlatformSync for GitHubPlatformSync {
             })
             .collect();
 
-        Ok((new_items, has_next_page, end_cursor))
+        let effective_has_next = has_next_page && !hit_cutoff;
+        Ok((new_items, effective_has_next, end_cursor))
     }
 }
 
@@ -398,6 +455,7 @@ impl PlatformSync for GitLabPlatformSync {
     async fn fetch_discussions_page(
         &self,
         _cursor: Option<&str>,
+        _since: Option<&str>,
     ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error> {
         // GitLab does not have a discussions concept equivalent to GitHub.
         Ok((Vec::new(), false, None))
@@ -416,141 +474,173 @@ pub async fn sync_platform_items(
     platform: &dyn PlatformSync,
     progress: &dyn ProgressSink,
     is_full_reconciliation: bool,
+    config: &SyncConfig,
 ) -> Result<usize, Error> {
     let mut total_synced: usize = 0;
 
     let mut items_index = sync::load_items_index(db, &proj.id).await?;
 
-    let since = if is_full_reconciliation {
-        None
-    } else {
-        proj.last_sync_at
-            .map(|ts| ts.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-    };
+    let since_issues = compute_since(
+        is_full_reconciliation,
+        proj.last_sync_at,
+        config.sync_from_date_issues.as_deref(),
+    );
+    let since_prs = compute_since(
+        is_full_reconciliation,
+        proj.last_sync_at,
+        config.sync_from_date_prs.as_deref(),
+    );
+    let since_discussions = compute_since(
+        is_full_reconciliation,
+        proj.last_sync_at,
+        config.sync_from_date_discussions.as_deref(),
+    );
 
     let mut all_fetched_issue_ids: Vec<i32> = Vec::new();
     let mut all_fetched_pr_ids: Vec<i32> = Vec::new();
     let mut all_fetched_discussion_ids: Vec<i32> = Vec::new();
 
     // === Phase: Issues ===
-    let mut cursor: Option<String> = None;
-    let mut issue_page = 1u32;
-    loop {
-        progress.emit_progress(
-            "issues",
-            issue_page,
-            &format!(
-                "{}/{}: Fetching issues page {issue_page}...",
-                proj.owner, proj.name
-            ),
-        );
+    if config.sync_issues {
+        let mut cursor: Option<String> = None;
+        let mut issue_page = 1u32;
+        loop {
+            progress.emit_progress(
+                "issues",
+                issue_page,
+                &format!(
+                    "{}/{}: Fetching issues page {issue_page}...",
+                    proj.owner, proj.name
+                ),
+            );
 
-        let (items, has_next_page, end_cursor) = platform
-            .fetch_issues_page(cursor.as_deref(), since.as_deref())
-            .await?;
+            let (items, has_next_page, end_cursor) = platform
+                .fetch_issues_page(cursor.as_deref(), since_issues.as_deref())
+                .await?;
 
-        for item in &items {
-            all_fetched_issue_ids.push(item.external_id);
+            for item in &items {
+                all_fetched_issue_ids.push(item.external_id);
+            }
+
+            if !items.is_empty() {
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                total_synced += saved.len();
+                progress.emit_items(saved);
+            }
+
+            if !has_next_page {
+                break;
+            }
+            cursor = end_cursor;
+            issue_page += 1;
         }
-
-        if !items.is_empty() {
-            let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
-            total_synced += saved.len();
-            progress.emit_items(saved);
-        }
-
-        if !has_next_page {
-            break;
-        }
-        cursor = end_cursor;
-        issue_page += 1;
+        tracing::info!(project_id = %proj.id, "Issues phase completed");
+    } else {
+        tracing::info!(project_id = %proj.id, "Issues phase skipped (disabled in config)");
     }
-    tracing::info!(project_id = %proj.id, "Issues phase completed");
 
     // === Phase: PRs / Merge Requests ===
-    cursor = None;
-    let mut pr_page = 1u32;
-    loop {
-        progress.emit_progress(
-            "prs",
-            pr_page,
-            &format!(
-                "{}/{}: Fetching PRs page {pr_page}...",
-                proj.owner, proj.name
-            ),
-        );
+    if config.sync_prs {
+        let mut cursor: Option<String> = None;
+        let mut pr_page = 1u32;
+        loop {
+            progress.emit_progress(
+                "prs",
+                pr_page,
+                &format!(
+                    "{}/{}: Fetching PRs page {pr_page}...",
+                    proj.owner, proj.name
+                ),
+            );
 
-        let (items, has_next_page, end_cursor) = platform
-            .fetch_prs_page(cursor.as_deref(), since.as_deref())
-            .await?;
+            let (items, has_next_page, end_cursor) = platform
+                .fetch_prs_page(cursor.as_deref(), since_prs.as_deref())
+                .await?;
 
-        for item in &items {
-            all_fetched_pr_ids.push(item.external_id);
+            for item in &items {
+                all_fetched_pr_ids.push(item.external_id);
+            }
+
+            if !items.is_empty() {
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                total_synced += saved.len();
+                progress.emit_items(saved);
+            }
+
+            if !has_next_page {
+                break;
+            }
+            cursor = end_cursor;
+            pr_page += 1;
         }
-
-        if !items.is_empty() {
-            let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
-            total_synced += saved.len();
-            progress.emit_items(saved);
-        }
-
-        if !has_next_page {
-            break;
-        }
-        cursor = end_cursor;
-        pr_page += 1;
+        tracing::info!(project_id = %proj.id, "PRs phase completed");
+    } else {
+        tracing::info!(project_id = %proj.id, "PRs phase skipped (disabled in config)");
     }
-    tracing::info!(project_id = %proj.id, "PRs phase completed");
 
     // === Phase: Discussions ===
-    cursor = None;
-    let mut disc_page = 1u32;
-    loop {
-        progress.emit_progress(
-            "discussions",
-            disc_page,
-            &format!(
-                "{}/{}: Fetching discussions page {disc_page}...",
-                proj.owner, proj.name
-            ),
-        );
+    if config.sync_discussions {
+        let mut cursor: Option<String> = None;
+        let mut disc_page = 1u32;
+        loop {
+            progress.emit_progress(
+                "discussions",
+                disc_page,
+                &format!(
+                    "{}/{}: Fetching discussions page {disc_page}...",
+                    proj.owner, proj.name
+                ),
+            );
 
-        let (items, has_next_page, end_cursor) =
-            platform.fetch_discussions_page(cursor.as_deref()).await?;
+            let (items, has_next_page, end_cursor) = platform
+                .fetch_discussions_page(cursor.as_deref(), since_discussions.as_deref())
+                .await?;
 
-        // If the very first page is empty and there is no next page, skip
-        // the phase entirely (e.g. GitLab which has no discussions).
-        if items.is_empty() && !has_next_page {
-            break;
+            // If the very first page is empty and there is no next page, skip
+            // the phase entirely (e.g. GitLab which has no discussions).
+            if items.is_empty() && !has_next_page {
+                break;
+            }
+
+            for item in &items {
+                all_fetched_discussion_ids.push(item.external_id);
+            }
+
+            if !items.is_empty() {
+                let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
+                total_synced += saved.len();
+                progress.emit_items(saved);
+            }
+
+            if !has_next_page {
+                break;
+            }
+            cursor = end_cursor;
+            disc_page += 1;
         }
-
-        for item in &items {
-            all_fetched_discussion_ids.push(item.external_id);
-        }
-
-        if !items.is_empty() {
-            let saved = sync::upsert_items_batch(db, &proj.id, &mut items_index, items).await?;
-            total_synced += saved.len();
-            progress.emit_items(saved);
-        }
-
-        if !has_next_page {
-            break;
-        }
-        cursor = end_cursor;
-        disc_page += 1;
+        tracing::info!(project_id = %proj.id, "Discussions phase completed");
+    } else {
+        tracing::info!(project_id = %proj.id, "Discussions phase skipped (disabled in config)");
     }
-    tracing::info!(project_id = %proj.id, "Discussions phase completed");
 
     // === Full Reconciliation: mark absent items as closed ===
     if is_full_reconciliation {
-        sync::mark_absent_items_closed(db, &proj.id, &all_fetched_issue_ids, &ItemType::Issue)
-            .await?;
+        if config.sync_issues {
+            sync::mark_absent_items_closed(db, &proj.id, &all_fetched_issue_ids, &ItemType::Issue)
+                .await?;
+        }
 
-        sync::mark_absent_items_closed(db, &proj.id, &all_fetched_pr_ids, &ItemType::PullRequest)
+        if config.sync_prs {
+            sync::mark_absent_items_closed(
+                db,
+                &proj.id,
+                &all_fetched_pr_ids,
+                &ItemType::PullRequest,
+            )
             .await?;
+        }
 
-        if !all_fetched_discussion_ids.is_empty() {
+        if config.sync_discussions && !all_fetched_discussion_ids.is_empty() {
             sync::mark_absent_items_closed(
                 db,
                 &proj.id,
@@ -586,6 +676,7 @@ pub async fn sync_github_items(
     token: &str,
     progress: &dyn ProgressSink,
     is_full_reconciliation: bool,
+    config: &SyncConfig,
 ) -> Result<usize, Error> {
     let base_url = crate::services::auth::get_project_base_url(db, proj).await;
     let client = GitHubClient::with_base_url(token.to_string(), base_url);
@@ -613,7 +704,15 @@ pub async fn sync_github_items(
 
     let mut platform = GitHubPlatformSync::new(client, &proj.owner, &proj.name);
     platform.init(db, proj).await?;
-    sync_platform_items(db, proj, &platform, progress, is_full_reconciliation).await
+    sync_platform_items(
+        db,
+        proj,
+        &platform,
+        progress,
+        is_full_reconciliation,
+        config,
+    )
+    .await
 }
 
 pub async fn sync_gitlab_items(
@@ -623,9 +722,269 @@ pub async fn sync_gitlab_items(
     base_url: Option<String>,
     progress: &dyn ProgressSink,
     is_full_reconciliation: bool,
+    config: &SyncConfig,
 ) -> Result<usize, Error> {
     let client = GitLabClient::new(token.to_string(), base_url);
     let mut platform = GitLabPlatformSync::new(client, &proj.owner, &proj.name);
     platform.init(db, proj).await?;
-    sync_platform_items(db, proj, &platform, progress, is_full_reconciliation).await
+    sync_platform_items(
+        db,
+        proj,
+        &platform,
+        progress,
+        is_full_reconciliation,
+        config,
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::enums::{ItemState, ItemStatus};
+    use crate::models::item;
+    use crate::sync;
+    use crate::test_helpers::{dt, setup_test_db, ItemFactory, ProjectFactory};
+    use sea_orm::EntityTrait;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // -----------------------------------------------------------------------
+    // 6a: Unit tests for compute_since
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn compute_since_full_recon_no_sync_from_date() {
+        assert_eq!(compute_since(true, None, None), None);
+    }
+
+    #[test]
+    fn compute_since_full_recon_with_sync_from_date() {
+        assert_eq!(
+            compute_since(true, None, Some("2025-06-01T00:00:00Z")),
+            Some("2025-06-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_full_recon_ignores_last_sync_at() {
+        let last = dt("2025-08-01 00:00:00");
+        assert_eq!(
+            compute_since(true, Some(last), Some("2025-06-01T00:00:00Z")),
+            Some("2025-06-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_incremental_last_sync_newer() {
+        let last = dt("2025-08-01 00:00:00");
+        assert_eq!(
+            compute_since(false, Some(last), Some("2025-06-01T00:00:00Z")),
+            Some("2025-08-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_incremental_last_sync_older() {
+        let last = dt("2025-01-01 00:00:00");
+        assert_eq!(
+            compute_since(false, Some(last), Some("2025-06-01T00:00:00Z")),
+            Some("2025-06-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_incremental_no_last_sync_with_from_date() {
+        assert_eq!(
+            compute_since(false, None, Some("2025-06-01T00:00:00Z")),
+            Some("2025-06-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_incremental_last_sync_no_from_date() {
+        let last = dt("2025-08-01 00:00:00");
+        assert_eq!(
+            compute_since(false, Some(last), None),
+            Some("2025-08-01T00:00:00Z".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_since_incremental_no_last_sync_no_from_date() {
+        assert_eq!(compute_since(false, None, None), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // 6b: Integration tests for phase skipping
+    // -----------------------------------------------------------------------
+
+    /// Mock PlatformSync that tracks which methods were called.
+    struct MockPlatform {
+        issues_called: AtomicBool,
+        prs_called: AtomicBool,
+        discussions_called: AtomicBool,
+    }
+
+    impl MockPlatform {
+        fn new() -> Self {
+            Self {
+                issues_called: AtomicBool::new(false),
+                prs_called: AtomicBool::new(false),
+                discussions_called: AtomicBool::new(false),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PlatformSync for MockPlatform {
+        async fn init(
+            &mut self,
+            _db: &DatabaseConnection,
+            _proj: &project::Model,
+        ) -> Result<(), Error> {
+            Ok(())
+        }
+
+        async fn fetch_issues_page(
+            &self,
+            _cursor: Option<&str>,
+            _since: Option<&str>,
+        ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error> {
+            self.issues_called.store(true, Ordering::SeqCst);
+            Ok((Vec::new(), false, None))
+        }
+
+        async fn fetch_prs_page(
+            &self,
+            _cursor: Option<&str>,
+            _since: Option<&str>,
+        ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error> {
+            self.prs_called.store(true, Ordering::SeqCst);
+            Ok((Vec::new(), false, None))
+        }
+
+        async fn fetch_discussions_page(
+            &self,
+            _cursor: Option<&str>,
+            _since: Option<&str>,
+        ) -> Result<(Vec<sync::NewItem>, bool, Option<String>), Error> {
+            self.discussions_called.store(true, Ordering::SeqCst);
+            Ok((Vec::new(), false, None))
+        }
+    }
+
+    struct NoopProgress;
+
+    #[async_trait::async_trait]
+    impl ProgressSink for NoopProgress {
+        fn emit_progress(&self, _phase: &str, _page: u32, _message: &str) {}
+        fn emit_items(&self, _items: Vec<crate::models::item::Model>) {}
+        fn emit_complete(&self, _total: usize) {}
+        fn emit_error(&self, _error: &str, _retry_in: Option<u64>) {}
+    }
+
+    #[tokio::test]
+    async fn sync_issues_disabled_skips_issues_phase() {
+        let db = setup_test_db().await;
+        let proj = ProjectFactory::default().create(&db).await;
+        let platform = MockPlatform::new();
+        let config = SyncConfig {
+            sync_issues: false,
+            ..Default::default()
+        };
+
+        sync_platform_items(&db, &proj, &platform, &NoopProgress, false, &config)
+            .await
+            .unwrap();
+
+        assert!(!platform.issues_called.load(Ordering::SeqCst));
+        assert!(platform.prs_called.load(Ordering::SeqCst));
+        assert!(platform.discussions_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn sync_prs_disabled_skips_prs_phase() {
+        let db = setup_test_db().await;
+        let proj = ProjectFactory::default().create(&db).await;
+        let platform = MockPlatform::new();
+        let config = SyncConfig {
+            sync_prs: false,
+            ..Default::default()
+        };
+
+        sync_platform_items(&db, &proj, &platform, &NoopProgress, false, &config)
+            .await
+            .unwrap();
+
+        assert!(platform.issues_called.load(Ordering::SeqCst));
+        assert!(!platform.prs_called.load(Ordering::SeqCst));
+        assert!(platform.discussions_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn sync_discussions_disabled_skips_discussions_phase() {
+        let db = setup_test_db().await;
+        let proj = ProjectFactory::default().create(&db).await;
+        let platform = MockPlatform::new();
+        let config = SyncConfig {
+            sync_discussions: false,
+            ..Default::default()
+        };
+
+        sync_platform_items(&db, &proj, &platform, &NoopProgress, false, &config)
+            .await
+            .unwrap();
+
+        assert!(platform.issues_called.load(Ordering::SeqCst));
+        assert!(platform.prs_called.load(Ordering::SeqCst));
+        assert!(!platform.discussions_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn sync_all_enabled_calls_all_phases() {
+        let db = setup_test_db().await;
+        let proj = ProjectFactory::default().create(&db).await;
+        let platform = MockPlatform::new();
+        let config = SyncConfig::default();
+
+        sync_platform_items(&db, &proj, &platform, &NoopProgress, false, &config)
+            .await
+            .unwrap();
+
+        assert!(platform.issues_called.load(Ordering::SeqCst));
+        assert!(platform.prs_called.load(Ordering::SeqCst));
+        assert!(platform.discussions_called.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn disabled_type_full_recon_preserves_existing_items() {
+        let db = setup_test_db().await;
+        let proj = ProjectFactory::default().create(&db).await;
+
+        // Create an existing open issue
+        let existing = ItemFactory::new(&proj.id, 42)
+            .item_type(ItemType::Issue)
+            .state(ItemState::Open)
+            .create(&db)
+            .await;
+
+        let platform = MockPlatform::new();
+        let config = SyncConfig {
+            sync_issues: false,
+            ..Default::default()
+        };
+
+        // Full reconciliation with issues disabled — should NOT mark existing issues closed
+        sync_platform_items(&db, &proj, &platform, &NoopProgress, true, &config)
+            .await
+            .unwrap();
+
+        assert!(!platform.issues_called.load(Ordering::SeqCst));
+        let reloaded = item::Entity::find_by_id(&existing.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(reloaded.item_status, ItemStatus::Pending);
+    }
 }
