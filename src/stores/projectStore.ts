@@ -49,9 +49,18 @@ export const useProjectStore = create<ProjectState>((set) => ({
       return { syncingProjects: rest };
     }),
 
-  syncStatus: { state: "idle", message: null, lastSyncAt: null, lastError: null },
+  syncStatus: { state: "idle", message: null, lastSyncAt: localStorage.getItem("lastSyncAt"), lastError: null },
   setSyncStatus: (status) =>
-    set((state) => ({ syncStatus: { ...state.syncStatus, ...status } })),
+    set((state) => {
+      if (status.lastSyncAt !== undefined) {
+        if (status.lastSyncAt) {
+          localStorage.setItem("lastSyncAt", status.lastSyncAt);
+        } else {
+          localStorage.removeItem("lastSyncAt");
+        }
+      }
+      return { syncStatus: { ...state.syncStatus, ...status } };
+    }),
 
   isPreparingRepo: false,
   setIsPreparingRepo: (preparing) => set({ isPreparingRepo: preparing }),

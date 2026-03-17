@@ -50,7 +50,7 @@ export function NextSyncCountdown() {
     return () => clearInterval(id);
   }, [lastSyncAt, refreshInterval, isSyncing, remaining !== null && remaining <= 60]);
 
-  if (remaining === null || isSyncing) return null;
+  if (remaining === null || remaining <= 0 || isSyncing) return null;
 
   return (
     <HoverCard openDelay={300} closeDelay={100}>
