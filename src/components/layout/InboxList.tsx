@@ -30,6 +30,11 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from "@/components/ui/hover-card";
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -786,49 +791,76 @@ export function InboxList() {
         <div className="flex shrink-0 items-center gap-1">
           {!isSearchOpen && !isNotesOnly && <NextSyncCountdown />}
           {!isSearchOpen && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleOpenSearch}
-              aria-label="Search"
-            >
-              <Search className="h-4 w-4" />
-            </Button>
+            <HoverCard openDelay={300} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleOpenSearch}
+                  aria-label="Search"
+                >
+                  <Search className="h-4 w-4" />
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+                <p className="text-xs text-muted-foreground">Search</p>
+              </HoverCardContent>
+            </HoverCard>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleCreateNote}
-            aria-label="Create note"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={isNotesOnly ? () => refreshInbox() : syncItems}
-            disabled={!isNotesOnly && isSyncing}
-            aria-label="Refresh"
-          >
-            {!isNotesOnly && isSyncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </Button>
-          <Button
-            variant={groupByRepository ? "secondary" : "ghost"}
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setGroupByRepository(!groupByRepository)}
-            title="Group by repository"
-            aria-label="Group by repository"
-          >
-            <FolderGit2 className="h-4 w-4" />
-          </Button>
+          <HoverCard openDelay={300} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleCreateNote}
+                aria-label="Create note"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+              <p className="text-xs text-muted-foreground">Create note</p>
+            </HoverCardContent>
+          </HoverCard>
+          <HoverCard openDelay={300} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={isNotesOnly ? () => refreshInbox() : syncItems}
+                disabled={!isNotesOnly && isSyncing}
+                aria-label="Refresh"
+              >
+                {!isNotesOnly && isSyncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+              <p className="text-xs text-muted-foreground">Sync</p>
+            </HoverCardContent>
+          </HoverCard>
+          <HoverCard openDelay={300} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <Button
+                variant={groupByRepository ? "secondary" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setGroupByRepository(!groupByRepository)}
+                aria-label="Group by repository"
+              >
+                <FolderGit2 className="h-4 w-4" />
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+              <p className="text-xs text-muted-foreground">Group by repository</p>
+            </HoverCardContent>
+          </HoverCard>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More options">
