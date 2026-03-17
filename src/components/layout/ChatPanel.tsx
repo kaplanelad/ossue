@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink, Trash2, X, Copy, Check, CircleDot, GitPullRequest, Link2, Maximize2, Minimize2 } from "lucide-react";
 import { findLinkedItems } from "@/lib/linkedItems";
 import type { Item, AnalysisAction } from "@/types";
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from "@/components/ui/hover-card";
 
 interface ChatPanelProps {
   width?: number;
@@ -70,58 +75,86 @@ export function ChatPanel({ width, isFullscreen, onToggleFullscreen }: ChatPanel
         <div className="flex shrink-0 items-center gap-1">
           {selectedItem.type_data.kind !== "note" && (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="Open in browser"
-                asChild
-              >
-                <a href={selectedItem.type_data.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </Button>
+              <HoverCard openDelay={300} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    aria-label="Open in browser"
+                    asChild
+                  >
+                    <a href={selectedItem.type_data.url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                </HoverCardTrigger>
+                <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+                  <p className="text-xs text-muted-foreground">Open in browser</p>
+                </HoverCardContent>
+              </HoverCard>
               <CopyUrlButton url={selectedItem.type_data.url} />
             </>
           )}
           {messages.length > 0 && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={clearMessages}
-              aria-label="Clear chat history"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <HoverCard openDelay={300} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  onClick={clearMessages}
+                  aria-label="Clear chat history"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+                <p className="text-xs text-muted-foreground">Clear chat history</p>
+              </HoverCardContent>
+            </HoverCard>
           )}
           {onToggleFullscreen && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={onToggleFullscreen}
-              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            >
-              {isFullscreen ? (
-                <Minimize2 className="h-4 w-4" />
-              ) : (
-                <Maximize2 className="h-4 w-4" />
-              )}
-            </Button>
+            <HoverCard openDelay={300} closeDelay={100}>
+              <HoverCardTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onToggleFullscreen}
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+                >
+                  {isFullscreen ? (
+                    <Minimize2 className="h-4 w-4" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" />
+                  )}
+                </Button>
+              </HoverCardTrigger>
+              <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+                <p className="text-xs text-muted-foreground">{isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}</p>
+              </HoverCardContent>
+            </HoverCard>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              if (isFullscreen && onToggleFullscreen) onToggleFullscreen();
-              setSelectedItemId(null);
-            }}
-            aria-label="Close panel"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <HoverCard openDelay={300} closeDelay={100}>
+            <HoverCardTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  if (isFullscreen && onToggleFullscreen) onToggleFullscreen();
+                  setSelectedItemId(null);
+                }}
+                aria-label="Close panel"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </HoverCardTrigger>
+            <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+              <p className="text-xs text-muted-foreground">Close panel</p>
+            </HoverCardContent>
+          </HoverCard>
         </div>
       </div>
 
@@ -193,18 +226,25 @@ function CopyUrlButton({ url }: { url: string }) {
   };
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-8 w-8"
-      aria-label="Copy URL"
-      onClick={handleCopy}
-    >
-      {copied ? (
-        <Check className="h-4 w-4 text-green-500" />
-      ) : (
-        <Copy className="h-4 w-4" />
-      )}
-    </Button>
+    <HoverCard openDelay={300} closeDelay={100}>
+      <HoverCardTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          aria-label="Copy URL"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <Check className="h-4 w-4 text-green-500" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+        </Button>
+      </HoverCardTrigger>
+      <HoverCardContent align="center" side="bottom" className="w-auto p-2">
+        <p className="text-xs text-muted-foreground">{copied ? "Copied!" : "Copy URL"}</p>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
